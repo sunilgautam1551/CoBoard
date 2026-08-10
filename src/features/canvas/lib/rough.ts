@@ -174,3 +174,17 @@ export function roughLine(
     generator.line(x1, y1, x2, y2, toRoughOptions(seed, strokeWidth, style)),
   );
 }
+
+/** Connected straight-segment path through 2+ points — a multi-point line/arrow. */
+export function roughPolyline(
+  points: number[],
+  seed: number,
+  strokeWidth: number,
+  style: Pick<ShapeStyle, 'stroke' | 'roughness' | 'strokeStyle'>,
+): RoughPath[] {
+  const pairs: [number, number][] = [];
+  for (let i = 0; i < points.length; i += 2) pairs.push([points[i], points[i + 1]]);
+  if (pairs.length < 2) return [];
+  if (pairs.length === 2) return roughLine(pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1], seed, strokeWidth, style);
+  return drawableToPaths(generator.linearPath(pairs, toRoughOptions(seed, strokeWidth, style)));
+}

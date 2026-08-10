@@ -20,8 +20,11 @@ import {
   duplicateSelectionAndBroadcast,
   deleteSelectionAndBroadcast,
   reorderSelectionAndBroadcast,
+  copySelectionToClipboard,
+  pasteClipboardAndBroadcast,
 } from './lib/elementActions';
 import { isContainerType, findBoundText, requiredContainerHeight } from './lib/boundText';
+import { applyEndpointBindings, recomputeBoundArrow, findBoundArrows } from './lib/binding';
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'diamond', 'ellipse', 'line', 'arrow'];
 
@@ -44,6 +47,7 @@ export function Canvas() {
   const setSelectedIds = useBoardStore((s) => s.setSelectedIds);
   const applyElement = useBoardStore((s) => s.applyElement);
   const commitElement = useBoardStore((s) => s.commitElement);
+  const commitElements = useBoardStore((s) => s.commitElements);
   const deleteElements = useBoardStore((s) => s.deleteElements);
   const setTool = useBoardStore((s) => s.setTool);
 
@@ -86,15 +90,32 @@ export function Canvas() {
   }, []);
 
   // Drawing gesture state (kept in refs — no re-render needed mid-gesture).
+  // isMultiPoint distinguishes a line/arrow being built via repeated
+  // clicks (Excalidraw's "click to add a vertex, double-click/Enter/
+  // Escape to finish") from a plain click-drag 2-point line — see
+  // handlePointerUp for how that's detected.
   const drawing = useRef<{
     id: string;
     startX: number;
     startY: number;
+    isMultiPoint: boolean;
+    downAt: { x: number; y: number };
   } | null>(null);
   const panning = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const lastPinchDist = useRef<number | null>(null);
   const marqueeStart = useRef<{ x: number; y: number } | null>(null);
+  // Where/when the last vertex-click of a multi-point line landed — a
+  // second click in nearly the same spot shortly after is treated as
+  // "double-click to finish". Konva's own onDblClick fires from timing
+  // alone with no distance check, so a *third* quick click anywhere
+  // during multi-point drawing was wrongly read as "finish"; this
+  // position-aware check is what actually replaces it.
+  const lastPointClick = useRef<{ x: number; y: number; time: number } | null>(null);
+  const suppressNextDblClick = useRef(false);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Last known cursor position in world space — used to paste at the
+  // cursor instead of always at a fixed offset from the copied element.
+  const lastPointerWorld = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const isPanMode = spaceDown || tool === 'hand';
 
@@ -103,14 +124,17 @@ export function Canvas() {
     else nodesRef.current.delete(id);
   }, []);
 
-  // A single selected line/arrow gets Excalidraw-style endpoint-drag
-  // handles instead of a generic bounding-box Transformer — see
-  // LineEndpointHandles for why (a box's 8 handles are fiddly for a
-  // thin diagonal shape when "move one end" is all you usually want).
+  // A single selected 2-point line/arrow gets Excalidraw-style endpoint-
+  // drag handles instead of a generic bounding-box Transformer — see
+  // LineEndpointHandles for why (a box's 8 handles are fiddly for a thin
+  // diagonal shape when "move one end" is all you usually want). A
+  // multi-point line has more than 2 vertices to manage, so it falls
+  // back to the Transformer (which scales/rotates every point at once).
   const singleSelectedElement =
     selectedIds.length === 1 ? elements[selectedIds[0]] : null;
   const usesEndpointHandles =
-    singleSelectedElement?.type === 'line' || singleSelectedElement?.type === 'arrow';
+    (singleSelectedElement?.type === 'line' || singleSelectedElement?.type === 'arrow') &&
+    (singleSelectedElement.points?.length ?? 0) === 4;
 
   // Keep transformer in sync with selection. Hidden entirely while a text
   // (bound or standalone) is being edited — matches Excalidraw, which
@@ -148,15 +172,39 @@ export function Canvas() {
       if (type === 'rect' || type === 'diamond' || type === 'ellipse') {
         element = { ...base, type, x: world.x, y: world.y, w: 0, h: 0 };
       } else if (type === 'line' || type === 'arrow') {
-        element = { ...base, type, points: [world.x, world.y, world.x, world.y] };
+        element = {
+          ...base,
+          type,
+          points: [world.x, world.y, world.x, world.y],
+          ...(type === 'arrow'
+            ? { startArrowhead: style.startArrowhead, endArrowhead: style.endArrowhead }
+            : {}),
+        };
       } else {
         element = { ...base, type: 'path', points: [world.x, world.y] };
       }
-      drawing.current = { id, startX: world.x, startY: world.y };
+      drawing.current = { id, startX: world.x, startY: world.y, isMultiPoint: false, downAt: world };
       applyElement(element);
     },
     [applyElement, style],
   );
+
+  // Finishes a multi-point line/arrow (Escape, Enter, or double-click),
+  // snapping its endpoints to any shape they landed on/near and
+  // recording the binding so the arrow follows that shape later.
+  const finishMultiPointLine = useCallback(() => {
+    if (!drawing.current?.isMultiPoint) return;
+    const id = drawing.current.id;
+    drawing.current = null;
+    const current = useBoardStore.getState().elements[id];
+    if (!current) return;
+    const bound = applyEndpointBindings(current, Object.values(useBoardStore.getState().elements));
+    const final = { ...bound, updatedAt: Date.now() };
+    commitElement(final);
+    useSyncStore.getState().sendUpsert(final);
+    setTool('select');
+    setSelectedIds([final.id]);
+  }, [commitElement, setSelectedIds, setTool]);
 
   const createTextAt = useCallback(
     (world: { x: number; y: number }) => {
@@ -284,10 +332,36 @@ export function Canvas() {
       }
 
       if (tool === 'pen' || SHAPE_TOOLS.includes(tool as ElementType)) {
-        startShapeDraw(tool === 'pen' ? 'path' : (tool as ElementType), world);
+        const shapeType = tool === 'pen' ? 'path' : (tool as ElementType);
+        if ((shapeType === 'line' || shapeType === 'arrow') && drawing.current?.isMultiPoint) {
+          const last = lastPointClick.current;
+          const closeInSpace = last && Math.hypot(world.x - last.x, world.y - last.y) < 6 / viewport.scale;
+          const closeInTime = last && Date.now() - last.time < 500;
+          if (closeInSpace && closeInTime) {
+            // A second click in nearly the same spot shortly after the
+            // last one — a double-click to finish, not a new vertex.
+            lastPointClick.current = null;
+            suppressNextDblClick.current = true;
+            finishMultiPointLine();
+            return;
+          }
+          // Another click while building a multi-point line/arrow: lock
+          // in the current rubber-band point as a fixed vertex and start
+          // rubber-banding a new segment from it.
+          const existing = useBoardStore.getState().elements[drawing.current.id];
+          if (existing) {
+            const next = { ...existing, points: [...(existing.points ?? []), world.x, world.y] };
+            applyElement(next);
+            useSyncStore.getState().sendUpsertThrottled(next);
+            drawing.current = { ...drawing.current, downAt: world };
+            lastPointClick.current = { x: world.x, y: world.y, time: Date.now() };
+          }
+          return;
+        }
+        startShapeDraw(shapeType, world);
       }
     },
-    [isPanMode, tool, viewport, deleteElements, startShapeDraw, createTextAt],
+    [isPanMode, tool, viewport, deleteElements, startShapeDraw, createTextAt, applyElement, finishMultiPointLine],
   );
 
   // Double-click with the select tool: matches Excalidraw's "you don't
@@ -301,7 +375,20 @@ export function Canvas() {
   const handleDoubleClick = useCallback(
     (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = stageRef.current;
-      if (!stage || tool !== 'select') return;
+      if (!stage) return;
+
+      // A multi-point line/arrow's finishing double-click is already
+      // fully handled in handlePointerDown (see lastPointClick) — Konva's
+      // own dblclick synthesis is timing-only with no distance check, so
+      // it also fires after any two quick clicks anywhere on the stage
+      // and can't be trusted to mean "finish the line" on its own.
+      if (suppressNextDblClick.current) {
+        suppressNextDblClick.current = false;
+        return;
+      }
+      if (drawing.current?.isMultiPoint) return;
+
+      if (tool !== 'select') return;
       const target = e.target;
       if (target !== stage && target.id()) {
         const clicked = useBoardStore.getState().elements[target.id()];
@@ -332,6 +419,7 @@ export function Canvas() {
       if (!stage) return;
 
       const world = getWorldPointer(stage);
+      lastPointerWorld.current = world;
       useSyncStore.getState().updateCursor(world.x, world.y);
 
       if (panning.current) {
@@ -377,9 +465,12 @@ export function Canvas() {
           h: world.y - drawing.current.startY,
         };
       } else if (current.type === 'line' || current.type === 'arrow') {
+        // Rubber-band only the last point — earlier ones are fixed
+        // vertices locked in by previous clicks (multi-point mode).
+        const pts = current.points ?? [];
         next = {
           ...current,
-          points: [drawing.current.startX, drawing.current.startY, world.x, world.y],
+          points: [...pts.slice(0, -2), world.x, world.y],
         };
       } else if (current.type === 'path') {
         next = {
@@ -395,48 +486,73 @@ export function Canvas() {
     [tool, applyElement, deleteElements, setViewport],
   );
 
-  const handlePointerUp = useCallback(() => {
-    if (panning.current) {
-      panning.current = null;
-      return;
-    }
-    if (marqueeStart.current) {
-      const rect = marqueeRect;
-      marqueeStart.current = null;
-      setMarqueeRect(null);
-      if (rect && (rect.w > 2 || rect.h > 2)) {
-        // Bound text isn't independently selectable — marquee-selecting
-        // over a labeled shape should pick up the shape, not its label.
-        const hits = Object.values(useBoardStore.getState().elements)
-          .filter((el) => !el.deleted && !el.containerId && boundsIntersect(getElementBounds(el), rect))
-          .map((el) => el.id);
-        setSelectedIds(hits);
-      } else {
-        setSelectedIds([]);
+  const handlePointerUp = useCallback(
+    () => {
+      if (panning.current) {
+        panning.current = null;
+        return;
       }
-      return;
-    }
-    if (drawing.current) {
-      const current = useBoardStore.getState().elements[drawing.current.id];
-      drawing.current = null;
-      if (current) {
-        // Normalize negative width/height so hit-testing and selection
-        // behave correctly.
-        let final: Element;
-        if (current.type === 'rect' || current.type === 'diamond' || current.type === 'ellipse') {
-          const x = current.w! < 0 ? current.x! + current.w! : current.x!;
-          const y = current.h! < 0 ? current.y! + current.h! : current.y!;
-          final = { ...current, x, y, w: Math.abs(current.w!), h: Math.abs(current.h!) };
+      if (marqueeStart.current) {
+        const rect = marqueeRect;
+        marqueeStart.current = null;
+        setMarqueeRect(null);
+        if (rect && (rect.w > 2 || rect.h > 2)) {
+          // Bound text isn't independently selectable — marquee-selecting
+          // over a labeled shape should pick up the shape, not its label.
+          const hits = Object.values(useBoardStore.getState().elements)
+            .filter((el) => !el.deleted && !el.containerId && boundsIntersect(getElementBounds(el), rect))
+            .map((el) => el.id);
+          setSelectedIds(hits);
         } else {
-          final = { ...current, updatedAt: Date.now() };
+          setSelectedIds([]);
         }
-        commitElement(final);
-        useSyncStore.getState().sendUpsert(final);
-        if (tool !== 'pen') setTool('select');
-        setSelectedIds([current.id]);
+        return;
       }
-    }
-  }, [commitElement, setSelectedIds, tool, setTool, marqueeRect]);
+      if (drawing.current) {
+        const current = useBoardStore.getState().elements[drawing.current.id];
+        const isLineOrArrow = current?.type === 'line' || current?.type === 'arrow';
+
+        if (isLineOrArrow) {
+          const stage = stageRef.current;
+          const world = stage ? getWorldPointer(stage) : { x: drawing.current.downAt.x, y: drawing.current.downAt.y };
+          const moved = Math.hypot(world.x - drawing.current.downAt.x, world.y - drawing.current.downAt.y);
+          const clickThreshold = 4 / viewport.scale;
+          if (moved < clickThreshold) {
+            // A click, not a drag: enter/stay in multi-point mode instead
+            // of finishing — matches Excalidraw's dual click-to-build-a-
+            // polyline vs. drag-for-a-simple-segment behavior.
+            drawing.current = { ...drawing.current, isMultiPoint: true };
+            lastPointClick.current = { x: drawing.current.downAt.x, y: drawing.current.downAt.y, time: Date.now() };
+            return;
+          }
+        }
+
+        drawing.current = null;
+        if (current) {
+          // Normalize negative width/height so hit-testing and selection
+          // behave correctly.
+          let final: Element;
+          if (current.type === 'rect' || current.type === 'diamond' || current.type === 'ellipse') {
+            const x = current.w! < 0 ? current.x! + current.w! : current.x!;
+            const y = current.h! < 0 ? current.y! + current.h! : current.y!;
+            final = { ...current, x, y, w: Math.abs(current.w!), h: Math.abs(current.h!) };
+          } else if (isLineOrArrow) {
+            final = applyEndpointBindings(
+              { ...current, updatedAt: Date.now() },
+              Object.values(useBoardStore.getState().elements),
+            );
+          } else {
+            final = { ...current, updatedAt: Date.now() };
+          }
+          commitElement(final);
+          useSyncStore.getState().sendUpsert(final);
+          if (tool !== 'pen') setTool('select');
+          setSelectedIds([current.id]);
+        }
+      }
+    },
+    [commitElement, setSelectedIds, tool, setTool, marqueeRect, viewport.scale],
+  );
 
   const handleWheel = useCallback(
     (e: KonvaEventObject<WheelEvent>) => {
@@ -523,19 +639,46 @@ export function Canvas() {
     [tool, setSelectedIds],
   );
 
-  const handleShapeDragMove = useCallback((id: string, node: Konva.Node) => {
-    const element = useBoardStore.getState().elements[id];
-    if (!element) return;
-    const tentative: Element =
-      element.type === 'line' || element.type === 'arrow' || element.type === 'path'
-        ? { ...element, points: translatePoints(element.points ?? [], node.x(), node.y()) }
-        : {
-            ...element,
-            x: element.type === 'ellipse' ? node.x() - (element.w ?? 0) / 2 : node.x(),
-            y: element.type === 'ellipse' ? node.y() - (element.h ?? 0) / 2 : node.y(),
-          };
-    useSyncStore.getState().sendUpsertThrottled(tentative);
+  // Arrows bound to a container aren't its Konva children (unlike bound
+  // text) — they're independent top-level elements connected only by id,
+  // so moving/resizing the container has to explicitly push their
+  // endpoints along too.
+  const followBoundArrowsLive = useCallback(
+    (container: Element) => {
+      if (!isContainerType(container.type)) return;
+      const boundArrows = findBoundArrows(Object.values(useBoardStore.getState().elements), container.id);
+      for (const arrow of boundArrows) {
+        const updated = recomputeBoundArrow(arrow, container);
+        applyElement(updated);
+        useSyncStore.getState().sendUpsertThrottled(updated);
+      }
+    },
+    [applyElement],
+  );
+
+  const followBoundArrowsFinal = useCallback((container: Element): Element[] => {
+    if (!isContainerType(container.type)) return [];
+    const boundArrows = findBoundArrows(Object.values(useBoardStore.getState().elements), container.id);
+    return boundArrows.map((arrow) => recomputeBoundArrow(arrow, container));
   }, []);
+
+  const handleShapeDragMove = useCallback(
+    (id: string, node: Konva.Node) => {
+      const element = useBoardStore.getState().elements[id];
+      if (!element) return;
+      const tentative: Element =
+        element.type === 'line' || element.type === 'arrow' || element.type === 'path'
+          ? { ...element, points: translatePoints(element.points ?? [], node.x(), node.y()) }
+          : {
+              ...element,
+              x: element.type === 'ellipse' ? node.x() - (element.w ?? 0) / 2 : node.x(),
+              y: element.type === 'ellipse' ? node.y() - (element.h ?? 0) / 2 : node.y(),
+            };
+      useSyncStore.getState().sendUpsertThrottled(tentative);
+      followBoundArrowsLive(tentative);
+    },
+    [followBoundArrowsLive],
+  );
 
   const handleShapeDragEnd = useCallback(
     (id: string, node: Konva.Node) => {
@@ -559,10 +702,17 @@ export function Canvas() {
           updatedAt: Date.now(),
         };
       }
+      const updatedArrows = followBoundArrowsFinal(final);
+      if (updatedArrows.length > 0) {
+        commitElements([final, ...updatedArrows]);
+        useSyncStore.getState().sendUpsert(final);
+        for (const arrow of updatedArrows) useSyncStore.getState().sendUpsert(arrow);
+        return;
+      }
       commitElement(final);
       useSyncStore.getState().sendUpsert(final);
     },
-    [commitElement],
+    [commitElement, commitElements, followBoundArrowsFinal],
   );
 
   const handleTransform = useCallback(() => {
@@ -571,9 +721,11 @@ export function Canvas() {
     for (const node of tr.nodes()) {
       const element = useBoardStore.getState().elements[node.id()];
       if (!element) continue;
-      useSyncStore.getState().sendUpsertThrottled(bakeNodeTransform(element, node));
+      const baked = bakeNodeTransform(element, node);
+      useSyncStore.getState().sendUpsertThrottled(baked);
+      followBoundArrowsLive(baked);
     }
-  }, []);
+  }, [followBoundArrowsLive]);
 
   const handleTransformEnd = useCallback(() => {
     const tr = transformerRef.current;
@@ -596,16 +748,29 @@ export function Canvas() {
           if (needed > (baked.h ?? 0)) baked = { ...baked, h: needed };
         }
       }
+      const updatedArrows = followBoundArrowsFinal(baked);
+      if (updatedArrows.length > 0) {
+        commitElements([baked, ...updatedArrows]);
+        useSyncStore.getState().sendUpsert(baked);
+        for (const arrow of updatedArrows) useSyncStore.getState().sendUpsert(arrow);
+        continue;
+      }
       commitElement(baked);
       useSyncStore.getState().sendUpsert(baked);
     }
-  }, [commitElement]);
+  }, [commitElement, commitElements, followBoundArrowsFinal]);
 
-  // Keyboard: delete selection, Ctrl/Cmd+D to duplicate.
+  // Keyboard: delete selection, Ctrl/Cmd+D to duplicate, Enter/Escape to
+  // finish a multi-point line/arrow currently being built by clicking.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      if (drawing.current?.isMultiPoint && (e.key === 'Escape' || e.key === 'Enter')) {
+        e.preventDefault();
+        finishMultiPointLine();
+        return;
+      }
       if (e.key === 'Escape') {
         setContextMenu(null);
         return;
@@ -618,11 +783,21 @@ export function Canvas() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && selectedIds.length > 0) {
         e.preventDefault();
         duplicateSelectionAndBroadcast();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && selectedIds.length > 0) {
+        e.preventDefault();
+        copySelectionToClipboard(selectedIds);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        pasteClipboardAndBroadcast(lastPointerWorld.current);
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedIds]);
+  }, [selectedIds, finishMultiPointLine]);
 
   const elementList = useMemo(
     () =>

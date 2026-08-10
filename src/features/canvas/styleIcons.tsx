@@ -120,3 +120,17 @@ export function TrashIcon() {
     </svg>
   );
 }
+
+export function ArrowheadIcon({ style }: { style: 'none' | 'triangle' | 'triangle_outline' | 'bar' | 'dot' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <line x1="1" y1="8" x2={style === 'none' ? 14 : 10} y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      {style === 'triangle' && <path d="M15 8 L9.5 5.3 L9.5 10.7 Z" fill="currentColor" />}
+      {style === 'triangle_outline' && (
+        <path d="M15 8 L9.5 5.3 L9.5 10.7 Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      )}
+      {style === 'bar' && <line x1="11" y1="4.5" x2="11" y2="11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
+      {style === 'dot' && <circle cx="12.5" cy="8" r="2.5" fill="currentColor" />}
+    </svg>
+  );
+}

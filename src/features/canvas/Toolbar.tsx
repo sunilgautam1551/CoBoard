@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useBoardStore } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Tool } from '@/types';
 import { ShareButton } from '@/features/board/components/ShareButton';
 import { AvatarStack } from '@/features/presence/AvatarStack';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
   { tool: 'select', label: 'Select', shortcut: 'V', icon: '⟡' },
@@ -32,17 +33,17 @@ export function Toolbar({ onOpenShortcuts }: Props) {
   const canRedo = useBoardStore((s) => s.future.length > 0);
 
   const toolButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   function handleClear() {
-    if (window.confirm('Clear the entire board? This cannot be undone.')) {
-      const { elements, clientId } = useBoardStore.getState();
-      const ids = Object.keys(elements);
-      const updatedAt = Date.now();
-      clearBoard();
-      for (const id of ids) {
-        useSyncStore.getState().sendDelete(id, updatedAt, clientId);
-      }
+    const { elements, clientId } = useBoardStore.getState();
+    const ids = Object.keys(elements);
+    const updatedAt = Date.now();
+    clearBoard();
+    for (const id of ids) {
+      useSyncStore.getState().sendDelete(id, updatedAt, clientId);
     }
+    setConfirmClearOpen(false);
   }
 
   // Roving tabindex (WAI-ARIA toolbar pattern): only the active tool is
@@ -137,7 +138,7 @@ export function Toolbar({ onOpenShortcuts }: Props) {
         </button>
         <button
           type="button"
-          onClick={handleClear}
+          onClick={() => setConfirmClearOpen(true)}
           aria-label="Clear board"
           title="Clear board"
           className="rounded-xl border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
@@ -145,6 +146,15 @@ export function Toolbar({ onOpenShortcuts }: Props) {
           Clear
         </button>
       </div>
+      <ConfirmDialog
+        open={confirmClearOpen}
+        title="Clear the entire board?"
+        description="Every shape, line, and text on this board will be deleted for everyone. This can't be undone."
+        confirmLabel="Clear board"
+        danger
+        onConfirm={handleClear}
+        onCancel={() => setConfirmClearOpen(false)}
+      />
     </div>
   );
 }

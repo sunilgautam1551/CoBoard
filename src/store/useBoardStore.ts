@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Element, Tool, StrokeStyle, Edges, FillStyle, TextAlign } from '@/types';
+import type { Element, Tool, StrokeStyle, Edges, FillStyle, TextAlign, ArrowheadStyle } from '@/types';
 import { newClientId, randomName, colorFromId, newElementId } from '@/lib/utils';
 import { loadStoredName, storeName, loadOrCreateColorSeed } from '@/lib/identity';
 import { config } from '@/lib/config';
@@ -20,6 +20,8 @@ export type Style = {
   edges: Edges;
   opacity: number;
   textAlign: TextAlign;
+  startArrowhead: ArrowheadStyle;
+  endArrowhead: ArrowheadStyle;
 };
 
 export type Viewport = { x: number; y: number; scale: number };
@@ -35,6 +37,8 @@ const DEFAULT_STYLE: Style = {
   edges: 'round',
   opacity: 100,
   textAlign: 'left',
+  startArrowhead: 'none',
+  endArrowhead: 'triangle',
 };
 
 interface BoardState {
@@ -168,6 +172,8 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         if (patch.edges !== undefined) updated.edges = patch.edges;
         if (patch.opacity !== undefined) updated.opacity = patch.opacity;
         if (patch.textAlign !== undefined && el.type === 'text') updated.textAlign = patch.textAlign;
+        if (patch.startArrowhead !== undefined && el.type === 'arrow') updated.startArrowhead = patch.startArrowhead;
+        if (patch.endArrowhead !== undefined && el.type === 'arrow') updated.endArrowhead = patch.endArrowhead;
         next[id] = updated;
 
         if (isContainerType(el.type)) {
@@ -322,6 +328,16 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     set((s) => {
       const next = { ...s.elements };
       for (const id of expanded) delete next[id];
+      // A deleted container's bound arrows shouldn't keep pointing at a
+      // now-nonexistent id — clear the reference so they just stay put.
+      for (const el of Object.values(next)) {
+        if (el.startBinding && expanded.includes(el.startBinding)) {
+          next[el.id] = { ...next[el.id], startBinding: undefined };
+        }
+        if (el.endBinding && expanded.includes(el.endBinding)) {
+          next[el.id] = { ...next[el.id], endBinding: undefined };
+        }
+      }
       return {
         elements: next,
         selectedIds: s.selectedIds.filter((id) => !expanded.includes(id)),

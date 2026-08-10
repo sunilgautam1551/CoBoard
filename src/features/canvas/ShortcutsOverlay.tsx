@@ -16,11 +16,16 @@ const SHORTCUTS: [string, string][] = [
   ['Delete / Backspace', 'Delete selection'],
   ['Shift + click', 'Add to selection'],
   ['Drag on empty canvas', 'Marquee-select'],
+  ['Click, click, … (line/arrow)', 'Add points one by one'],
+  ['Double-click / Enter / Esc', 'Finish a multi-point line/arrow'],
   ['Space + drag', 'Pan canvas'],
   ['Middle-mouse drag', 'Pan canvas'],
   ['Scroll / pinch', 'Zoom'],
   ['Ctrl/Cmd + Z', 'Undo'],
   ['Ctrl/Cmd + Shift + Z', 'Redo'],
+  ['Ctrl/Cmd + D', 'Duplicate selection'],
+  ['Ctrl/Cmd + C', 'Copy selection'],
+  ['Ctrl/Cmd + V', 'Paste'],
   ['?', 'Toggle this panel'],
 ];
 

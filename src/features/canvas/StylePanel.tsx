@@ -20,6 +20,7 @@ import {
   LayerIcon,
   DuplicateIcon,
   TrashIcon,
+  ArrowheadIcon,
 } from './styleIcons';
 
 const STROKE_SWATCHES = ['#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#f08c00'];
@@ -54,6 +55,13 @@ const FONT_SIZES: { label: string; value: number }[] = [
   { label: 'M', value: 20 },
   { label: 'L', value: 28 },
   { label: 'XL', value: 36 },
+];
+const ARROWHEADS: { label: string; value: Style['startArrowhead'] }[] = [
+  { label: 'None', value: 'none' },
+  { label: 'Arrow', value: 'triangle' },
+  { label: 'Triangle outline', value: 'triangle_outline' },
+  { label: 'Bar', value: 'bar' },
+  { label: 'Dot', value: 'dot' },
 ];
 
 const FILL_TYPES: (ElementType | Tool)[] = ['rect', 'diamond', 'ellipse', 'pen', 'path'];
@@ -127,6 +135,9 @@ export function StylePanel() {
   const showStrokeStyle = isShape || isLineArrow;
   const showSloppiness = isShape || isLineArrow;
   const showEdges = primaryType === 'rect' || primaryType === 'diamond';
+  // Only the Arrow tool has arrowheads — Excalidraw's Line tool never
+  // shows this section, matching a plain connector with no markers.
+  const showArrowheads = primaryType === 'arrow';
   // A selected container with a bound label also gets font-size/align
   // controls for that label, on top of its own shape-styling sections.
   const showTextControls = isStandaloneText || !!boundText;
@@ -143,6 +154,8 @@ export function StylePanel() {
   const activeOpacity = firstSelected?.opacity ?? style.opacity;
   const activeTextAlign = boundText?.textAlign ?? firstSelected?.textAlign ?? style.textAlign;
   const activeFontSize = boundText?.fontSize ?? firstSelected?.fontSize ?? style.fontSize;
+  const activeStartArrowhead = firstSelected?.startArrowhead ?? style.startArrowhead;
+  const activeEndArrowhead = firstSelected?.endArrowhead ?? style.endArrowhead;
 
   // Updates the default style for new elements AND, if something is
   // already selected, restyles it live and broadcasts the change —
@@ -319,6 +332,37 @@ export function StylePanel() {
                 <SloppinessIcon amplitude={amplitude} />
               </IconButton>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {showArrowheads && (
+        <Section label="Arrowheads">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1" role="group" aria-label="Start arrowhead">
+              {ARROWHEADS.map(({ label, value }) => (
+                <IconButton
+                  key={value}
+                  active={activeStartArrowhead === value}
+                  onClick={() => applyAndBroadcast({ startArrowhead: value })}
+                  label={`Start: ${label}`}
+                >
+                  <ArrowheadIcon style={value!} />
+                </IconButton>
+              ))}
+            </div>
+            <div className="flex items-center gap-1" role="group" aria-label="End arrowhead">
+              {ARROWHEADS.map(({ label, value }) => (
+                <IconButton
+                  key={value}
+                  active={activeEndArrowhead === value}
+                  onClick={() => applyAndBroadcast({ endArrowhead: value })}
+                  label={`End: ${label}`}
+                >
+                  <ArrowheadIcon style={value!} />
+                </IconButton>
+              ))}
+            </div>
           </div>
         </Section>
       )}

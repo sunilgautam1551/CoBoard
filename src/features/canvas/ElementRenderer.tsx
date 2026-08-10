@@ -1,13 +1,40 @@
 import { useMemo } from 'react';
-import { Ellipse, Group, Line, Path, Rect, Text } from 'react-konva';
+import { Circle, Ellipse, Group, Line, Path, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Element } from '@/types';
 import { pointsToSvgPath } from './lib/freehand';
-import { roughRect, roughDiamond, roughEllipse, roughLine, seedFromId, type RoughPath } from './lib/rough';
-import { arrowHeadPoints } from './lib/arrowhead';
+import {
+  roughRect,
+  roughDiamond,
+  roughEllipse,
+  roughPolyline,
+  seedFromId,
+  type RoughPath,
+} from './lib/rough';
+import { buildArrowhead, type ArrowheadMarker } from './lib/arrowhead';
 import { TEXT_FONT_FAMILY } from './lib/text';
 import { getBoundTextLocalBox } from './lib/boundText';
+
+function ArrowheadMarkerView({ marker, stroke, strokeWidth }: { marker: ArrowheadMarker; stroke: string; strokeWidth: number }) {
+  if (marker.kind === 'dot') {
+    return <Circle x={marker.x} y={marker.y} radius={marker.radius} fill={stroke} listening={false} />;
+  }
+  if (marker.kind === 'bar') {
+    return <Line points={marker.points} stroke={stroke} strokeWidth={strokeWidth} lineCap="round" listening={false} />;
+  }
+  return (
+    <Line
+      points={marker.points}
+      closed
+      fill={marker.filled ? stroke : undefined}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      lineJoin="round"
+      listening={false}
+    />
+  );
+}
 
 type Props = {
   element: Element;
@@ -80,7 +107,10 @@ export function ElementRenderer({
   const seed = useMemo(() => seedFromId(element.id), [element.id]);
   const w = element.w ?? 0;
   const h = element.h ?? 0;
-  const [x1, y1, x2, y2] = element.points ?? [0, 0, 0, 0];
+  // Memoized so this fallback array is referentially stable — otherwise
+  // a fresh [0,0,0,0] literal on every render of a non-line/arrow
+  // element would defeat the roughPaths memo below.
+  const points = useMemo(() => element.points ?? [0, 0, 0, 0], [element.points]);
   const roughness = element.roughness ?? 1.4;
   const strokeStyle = element.strokeStyle ?? 'solid';
   const fillStyle = element.fillStyle ?? 'solid';
@@ -101,17 +131,14 @@ export function ElementRenderer({
       return roughEllipse(w, h, seed, element.strokeWidth, { ...style, fill });
     }
     if (element.type === 'line' || element.type === 'arrow') {
-      return roughLine(x1, y1, x2, y2, seed, element.strokeWidth, style);
+      return roughPolyline(points, seed, element.strokeWidth, style);
     }
     return [];
   }, [
     element.type,
     w,
     h,
-    x1,
-    y1,
-    x2,
-    y2,
+    points,
     seed,
     element.strokeWidth,
     element.stroke,
@@ -201,6 +228,17 @@ export function ElementRenderer({
     case 'line':
     case 'arrow': {
       const headSize = Math.max(12, element.strokeWidth * 4);
+      const n = points.length;
+      const [startX, startY, afterStartX, afterStartY] = points;
+      const [beforeEndX, beforeEndY, endX, endY] = points.slice(n - 4);
+      const startMarker =
+        element.type === 'arrow'
+          ? buildArrowhead(element.startArrowhead ?? 'none', startX, startY, afterStartX, afterStartY, headSize)
+          : null;
+      const endMarker =
+        element.type === 'arrow'
+          ? buildArrowhead(element.endArrowhead ?? 'triangle', endX, endY, beforeEndX, beforeEndY, headSize)
+          : null;
       return (
         <Group {...common}>
           {roughPaths.map((p, i) => (
@@ -215,17 +253,8 @@ export function ElementRenderer({
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
             />
           ))}
-          {element.type === 'arrow' && (
-            <Line
-              id={element.id}
-              points={arrowHeadPoints(x1, y1, x2, y2, headSize)}
-              closed
-              fill={element.stroke}
-              stroke={element.stroke}
-              strokeWidth={element.strokeWidth}
-              lineJoin="round"
-            />
-          )}
+          {startMarker && <ArrowheadMarkerView marker={startMarker} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
+          {endMarker && <ArrowheadMarkerView marker={endMarker} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
         </Group>
       );
     }

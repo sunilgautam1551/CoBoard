@@ -4,6 +4,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { useBoardStore } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Element } from '@/types';
+import { applyEndpointBindings } from './lib/binding';
 
 /**
  * Excalidraw-style endpoint handles for a single selected line/arrow —
@@ -33,7 +34,12 @@ export function LineEndpointHandles({ element, scale }: { element: Element; scal
       which === 'start'
         ? [node.x(), node.y(), x2, y2]
         : [x1, y1, node.x(), node.y()];
-    const updated = { ...element, points: next, updatedAt: Date.now() };
+    // Re-checks binding at the new position — rebinds to whatever shape
+    // the endpoint now sits on/near, or unbinds if it was dragged away.
+    const updated = applyEndpointBindings(
+      { ...element, points: next, updatedAt: Date.now() },
+      Object.values(useBoardStore.getState().elements),
+    );
     commitElement(updated);
     useSyncStore.getState().sendUpsert(updated);
   }

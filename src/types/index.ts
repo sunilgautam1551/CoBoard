@@ -17,6 +17,7 @@ export type StrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type Edges = 'sharp' | 'round';
 export type FillStyle = 'hachure' | 'cross-hatch' | 'solid';
 export type TextAlign = 'left' | 'center' | 'right';
+export type ArrowheadStyle = 'none' | 'triangle' | 'triangle_outline' | 'bar' | 'dot';
 
 export type Element = {
   id: string;
@@ -40,6 +41,10 @@ export type Element = {
   textAlign?: TextAlign; // text only
   z?: number; // render/layer order — higher draws on top; falls back to updatedAt when unset
   containerId?: string; // text only — id of the rect/diamond/ellipse this label is bound to
+  startArrowhead?: ArrowheadStyle; // arrow only
+  endArrowhead?: ArrowheadStyle; // arrow only
+  startBinding?: string; // line/arrow only — id of the shape the start point is snapped to
+  endBinding?: string; // line/arrow only — id of the shape the end point is snapped to
   updatedAt: number; // ms epoch, Lamport-ish clock
   updatedBy: string; // clientId
   deleted?: boolean;

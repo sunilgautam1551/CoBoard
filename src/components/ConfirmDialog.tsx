@@ -14,6 +14,15 @@ type Props = {
   onCancel: () => void;
 };
 
+/**
+ * Reusable yes/no confirmation dialog for destructive or otherwise
+ * hard-to-undo actions (e.g. clearing a board) — a deliberate,
+ * accessible replacement for `window.confirm()`, which can't be styled
+ * and blocks the JS event loop. Traps focus on its confirm button while
+ * open, restores focus to whatever triggered it on close, and closes on
+ * Escape or a backdrop click. Always call it with `open` controlled by
+ * the caller's own state rather than mounting/unmounting it directly.
+ */
 export function ConfirmDialog({
   open,
   title,

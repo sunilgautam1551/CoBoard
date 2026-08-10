@@ -13,6 +13,16 @@ type Props = {
   onDone: () => void;
 };
 
+/**
+ * DOM `<textarea>` overlaid on top of the canvas while a text element
+ * (standalone or bound to a container) is being edited. A real textarea
+ * is used instead of an in-Konva editable node so the browser handles
+ * IME composition, selection, and caret rendering for free; its
+ * position/size/font are kept in exact sync with where the Konva
+ * `Text` node would draw so the switch between "editing" and
+ * "rendered" is visually seamless (see `ElementRenderer`, which hides
+ * the Konva node for whichever element id is currently being edited).
+ */
 export function TextEditor({ elementId, stage, onDone }: Props) {
   const element = useBoardStore((s) => s.elements[elementId]);
   const container = useBoardStore((s) =>
@@ -41,10 +51,11 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
   }, []);
 
   // Grows the container live while typing so bound text never overflows
-  // it mid-edit — matches  "container expands as you type."
-  // The internal no-op guard (needed === current height) makes this safe
-  // to re-run whenever `container`'s reference changes, including from
-  // its own update below.
+  // it mid-edit — the container's box expands to fit as you type, the
+  // same way a bound label behaves after editing finishes. The internal
+  // no-op guard (needed === current height) makes this safe to re-run
+  // whenever `container`'s reference changes, including from its own
+  // update below.
   useEffect(() => {
     if (!element || !container) return;
     const fontSize = element.fontSize ?? 20;
@@ -58,6 +69,11 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
 
   if (!element || !stage) return null;
 
+  /**
+   * Commits the edit on blur: deletes the element if it was left empty,
+   * otherwise saves the text (and, for bound text, the container's
+   * final grown height) and broadcasts both.
+   */
   function finish() {
     if (!element) return;
     const trimmed = value.trim();
@@ -115,9 +131,9 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
       onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
       onKeyDown={(e) => {
-        // Enter always inserts a newline — matches, which never
-        // treats Enter as "finish editing" for any text element, bound or
-        // standalone. Only Escape or clicking away commits.
+        // Enter always inserts a newline — it never means "finish
+        // editing" for any text element, bound or standalone. Only
+        // Escape or clicking away (triggering onBlur) commits.
         if (e.key === 'Escape') {
           e.preventDefault();
           e.currentTarget.blur();

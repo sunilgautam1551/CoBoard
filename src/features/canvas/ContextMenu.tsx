@@ -13,6 +13,14 @@ type Props = {
   onClose: () => void;
 };
 
+/**
+ * Right-click menu for the currently selected element(s): duplicate,
+ * reorder, and delete. Positioned absolutely at the `x`/`y` the click
+ * landed on (in container-local pixels, computed by the caller); a
+ * `pointerdown` inside the menu is stopped from bubbling so it doesn't
+ * also register as a canvas click that would close/replace the
+ * selection out from under it.
+ */
 export function ContextMenu({ x, y, onDuplicate, onDelete, onBringToFront, onSendToBack, onClose }: Props) {
   return (
     <div
@@ -63,6 +71,7 @@ export function ContextMenu({ x, y, onDuplicate, onDelete, onBringToFront, onSen
   );
 }
 
+/** One row of the context menu: an icon, a label, an optional shortcut hint, and a click handler. */
 function MenuItem({
   icon,
   label,

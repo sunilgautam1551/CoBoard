@@ -12,6 +12,13 @@ const TYPE_STYLES: Record<string, string> = {
   error: 'bg-red-600 text-white',
 };
 
+/**
+ * Global toast host — reads the shared toast queue from `useToastStore`
+ * and renders it as a fixed stack pinned to the top of the viewport.
+ * Mounted once in the root layout so any component can call
+ * `useToastStore.getState().addToast(...)` without rendering its own
+ * notification UI. Each toast self-dismisses after `AUTO_DISMISS_MS`.
+ */
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   const removeToast = useToastStore((s) => s.removeToast);

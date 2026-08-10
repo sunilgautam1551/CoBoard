@@ -19,6 +19,11 @@ export const metadata: Metadata = {
     "A shareable, real-time multiplayer infinite-canvas whiteboard.",
 };
 
+/**
+ * Root HTML shell for every route — loads the app-wide fonts, renders
+ * the page content, and mounts the global toast notification stack so
+ * any component can surface a message without its own portal.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html

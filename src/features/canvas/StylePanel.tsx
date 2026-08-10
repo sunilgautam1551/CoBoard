@@ -67,6 +67,7 @@ const ARROWHEADS: { label: string; value: Style['startArrowhead'] }[] = [
 const FILL_TYPES: (ElementType | Tool)[] = ['rect', 'diamond', 'ellipse', 'pen', 'path'];
 const SHAPE_TYPES: (ElementType | Tool)[] = ['rect', 'diamond', 'ellipse'];
 
+/** Labeled group within the panel (e.g. "Stroke", "Opacity") — a heading plus its row of controls. */
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -76,6 +77,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+/** Square toggle button used throughout the panel for picking one option from a small fixed set. */
 function IconButton({
   active,
   onClick,
@@ -105,6 +107,16 @@ function IconButton({
   );
 }
 
+/**
+ * Left-side floating panel of drawing-style controls (stroke, fill,
+ * sloppiness, arrowheads, text formatting, opacity, layer order, and
+ * quick actions). Which sections appear depends on the active tool when
+ * nothing is selected, or on the type of the first selected element
+ * once something is — e.g. picking the rectangle tool shows fill/edge
+ * controls, selecting an arrow shows arrowhead pickers instead. Hidden
+ * entirely for tools/selections that have no relevant style (select
+ * tool with nothing selected, hand, eraser).
+ */
 export function StylePanel() {
   const tool = useBoardStore((s) => s.tool);
   const style = useBoardStore((s) => s.style);
@@ -135,7 +147,8 @@ export function StylePanel() {
   const showStrokeStyle = isShape || isLineArrow;
   const showSloppiness = isShape || isLineArrow;
   const showEdges = primaryType === 'rect' || primaryType === 'diamond';
-  // shows this section, matching a plain connector with no markers.
+  // Only the Arrow tool has arrowheads — the Line tool never shows this
+  // section, matching a plain connector with no markers.
   const showArrowheads = primaryType === 'arrow';
   // A selected container with a bound label also gets font-size/align
   // controls for that label, on top of its own shape-styling sections.
@@ -156,12 +169,14 @@ export function StylePanel() {
   const activeStartArrowhead = firstSelected?.startArrowhead ?? style.startArrowhead;
   const activeEndArrowhead = firstSelected?.endArrowhead ?? style.endArrowhead;
 
-  // Updates the default style for new elements AND, if something is
-  // already selected, restyles it live and broadcasts the change —
-  // otherwise the panel would only ever affect shapes not drawn yet.
-  // Also syncs a selected container's bound text label (font size/align
-  // live on the label, not the container, but there's no separate way
-  // to select the label directly).
+  /**
+   * Updates the default style for new elements AND, if something is
+   * already selected, restyles it live and broadcasts the change —
+   * otherwise the panel would only ever affect shapes not drawn yet.
+   * Also syncs a selected container's bound text label (font size/align
+   * live on the label, not the container, but there's no separate way
+   * to select the label directly).
+   */
   function applyAndBroadcast(patch: Partial<Style>) {
     setStyle(patch);
     const ids = useBoardStore.getState().selectedIds;
@@ -176,6 +191,7 @@ export function StylePanel() {
     }
   }
 
+  /** Applies a new stroke color and remembers it in the recent-colors swatch row. */
   function handleStrokeChange(color: string) {
     applyAndBroadcast({ stroke: color });
     addRecentColor(color);

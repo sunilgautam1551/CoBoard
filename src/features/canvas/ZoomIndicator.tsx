@@ -3,15 +3,22 @@
 import { useBoardStore } from '@/store/useBoardStore';
 import { config } from '@/lib/config';
 
+/**
+ * Bottom-right zoom control: -/+ buttons that step the viewport scale
+ * by `config.zoomStep`, and a percentage readout that doubles as a
+ * "reset to 100%, re-center the origin" button.
+ */
 export function ZoomIndicator() {
   const scale = useBoardStore((s) => s.viewport.scale);
   const setViewport = useBoardStore((s) => s.setViewport);
 
+  /** Multiplies the current zoom by `factor`, clamped to the configured min/max. */
   function zoomBy(factor: number) {
     const next = Math.min(config.zoomMax, Math.max(config.zoomMin, scale * factor));
     setViewport({ scale: next });
   }
 
+  /** Returns the viewport to 100% zoom at the board's origin. */
   function reset() {
     setViewport({ x: 0, y: 0, scale: 1 });
   }

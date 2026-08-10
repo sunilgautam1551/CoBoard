@@ -28,6 +28,18 @@ import { applyEndpointBindings, recomputeBoundArrow, findBoundArrows } from './l
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'diamond', 'ellipse', 'line', 'arrow'];
 
+/**
+ * The infinite drawing surface itself: a Konva `Stage` plus all pointer,
+ * keyboard, wheel, and touch handling that turns raw input into board
+ * elements. This component owns every drawing *gesture* (click-drag to
+ * draw or select, click-click to build a multi-point line, drag to pan,
+ * scroll/pinch to zoom) — the resulting element data lives in
+ * `useBoardStore`, and `ElementRenderer` turns that data into the
+ * actual Konva nodes on screen. Local React state here is limited to
+ * transient UI (marquee rectangle, context menu position, which text is
+ * being edited); anything that needs to survive a re-render across
+ * gestures or be visible to other clients lives in the store instead.
+ */
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -91,9 +103,9 @@ export function Canvas() {
 
   // Drawing gesture state (kept in refs — no re-render needed mid-gesture).
   // isMultiPoint distinguishes a line/arrow being built via repeated
-  // clicks (click to add a vertex, double-click/Enter/
-  // Escape to finish") from a plain click-drag 2-point line — see
-  // handlePointerUp for how that's detected.
+  // clicks ("click to add a vertex, double-click/Enter/Escape to
+  // finish") from a plain click-drag 2-point line — see handlePointerUp
+  // for how that's detected.
   const drawing = useRef<{
     id: string;
     startX: number;
@@ -119,6 +131,7 @@ export function Canvas() {
 
   const isPanMode = spaceDown || tool === 'hand';
 
+  /** Tracks each element's live Konva node by id so the Transformer can be pointed at the current selection. */
   const registerNode = useCallback((id: string, node: Konva.Node | null) => {
     if (node) nodesRef.current.set(id, node);
     else nodesRef.current.delete(id);
@@ -136,9 +149,9 @@ export function Canvas() {
     (singleSelectedElement?.type === 'line' || singleSelectedElement?.type === 'arrow') &&
     (singleSelectedElement.points?.length ?? 0) === 4;
 
-  // Keep transformer in sync with selection. Hidden entirely while a text
-  // (bound or standalone) is being edited — matches, which
-  // shows no resize handles during text entry.
+  // Keep transformer in sync with selection. Hidden entirely while a
+  // text (bound or standalone) is being edited, since there's nothing
+  // to resize/rotate mid-edit.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -151,6 +164,12 @@ export function Canvas() {
     tr.getLayer()?.batchDraw();
   }, [selectedIds, elements, usesEndpointHandles, editingTextId]);
 
+  /**
+   * Begins a new shape/line/arrow/pen-stroke gesture at the given world
+   * point: creates the element with zero size (or a degenerate 2-point
+   * line) and stores it as a transient (uncommitted) update so
+   * `handlePointerMove` can grow it as the pointer moves.
+   */
   const startShapeDraw = useCallback(
     (type: ElementType, world: { x: number; y: number }) => {
       const id = newElementId();
@@ -189,9 +208,11 @@ export function Canvas() {
     [applyElement, style],
   );
 
-  // Finishes a multi-point line/arrow (Escape, Enter, or double-click),
-  // snapping its endpoints to any shape they landed on/near and
-  // recording the binding so the arrow follows that shape later.
+  /**
+   * Finishes a multi-point line/arrow (Escape, Enter, or double-click),
+   * snapping its endpoints to any shape they landed on/near and
+   * recording the binding so the arrow follows that shape later.
+   */
   const finishMultiPointLine = useCallback(() => {
     if (!drawing.current?.isMultiPoint) return;
     const id = drawing.current.id;
@@ -206,6 +227,7 @@ export function Canvas() {
     setSelectedIds([final.id]);
   }, [commitElement, setSelectedIds, setTool]);
 
+  /** Creates a new free-floating (non-bound) text element at `world` and immediately opens it for editing. */
   const createTextAt = useCallback(
     (world: { x: number; y: number }) => {
       const id = newElementId();
@@ -234,10 +256,12 @@ export function Canvas() {
     [style, commitElement, setSelectedIds, setTool],
   );
 
-  // Double-clicking inside a shape binds a label to it (
-  // "container text") instead of dropping a free-floating text element
-  // on top — the label centers itself, wraps to the shape's width, and
-  // the shape grows to fit it instead of the text spilling out past it.
+  /**
+   * Double-clicking inside a shape binds a label to it ("container
+   * text") instead of dropping a free-floating text element on top —
+   * the label centers itself, wraps to the shape's width, and the
+   * shape grows to fit it instead of the text spilling out past it.
+   */
   const createBoundTextAt = useCallback(
     (container: Element) => {
       const id = newElementId();
@@ -265,6 +289,7 @@ export function Canvas() {
     [style, commitElement, setSelectedIds, setTool],
   );
 
+  /** Right-click: selects the clicked element (if not already selected) and opens the context menu there. */
   const handleContextMenu = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
       e.evt.preventDefault();
@@ -285,6 +310,12 @@ export function Canvas() {
     [setSelectedIds],
   );
 
+  /**
+   * Routes a pointer-down to whatever the active tool means by it:
+   * start panning (middle-mouse or hand tool), start a marquee
+   * selection, erase, drop a text element, extend an in-progress
+   * multi-point line, or start drawing a new shape/line/pen-stroke.
+   */
   const handlePointerDown = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
       setContextMenu(null);
@@ -364,14 +395,21 @@ export function Canvas() {
     [isPanMode, tool, viewport, deleteElements, startShapeDraw, createTextAt, applyElement, finishMultiPointLine],
   );
 
-  // Double-click with the select tool: matches "you don't
-  // need a separate text tool" behavior.
-  // - On an existing standalone text element, re-opens it for editing.
-  // - On a shape (rect/diamond/ellipse), opens its bound label if it has
-  //   one, or creates one — this is what a bound text's own Konva node
-  //   resolves to too, since it renders with listening=false and lets
-  //   clicks fall through to the container's hit target beneath it.
-  // - Anywhere else, creates a free-floating text element.
+  /**
+   * Double-click with the select tool — "you don't need a separate text
+   * tool" behavior:
+   * - On an existing standalone text element, re-opens it for editing.
+   * - On a shape (rect/diamond/ellipse), opens its bound label if it has
+   *   one, or creates one — this is what a bound text's own Konva node
+   *   resolves to too, since it renders with listening=false and lets
+   *   clicks fall through to the container's hit target beneath it.
+   * - Anywhere else, creates a free-floating text element.
+   *
+   * Also absorbs Konva's dblclick synthesis for a multi-point line/arrow
+   * that just finished via `handlePointerDown`'s own click-based
+   * detection, so that finishing double-click doesn't *also* fall
+   * through to the text-creation logic below.
+   */
   const handleDoubleClick = useCallback(
     (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = stageRef.current;
@@ -413,6 +451,12 @@ export function Canvas() {
     [tool, setSelectedIds, createTextAt, createBoundTextAt],
   );
 
+  /**
+   * Per-frame pointer tracking: broadcasts the live cursor position for
+   * presence, and — depending on what's in progress — pans, grows the
+   * marquee rectangle, erases whatever's under the pointer, or grows
+   * the shape currently being drawn.
+   */
   const handlePointerMove = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
       const stage = stageRef.current;
@@ -486,6 +530,12 @@ export function Canvas() {
     [tool, applyElement, deleteElements, setViewport],
   );
 
+  /**
+   * Ends whatever gesture was in progress: stops panning, resolves the
+   * marquee rectangle into a selection, or finishes a shape/line/arrow
+   * draw — except a line/arrow drawn with a plain click (no drag) is
+   * *not* finished here; it hands off to multi-point mode instead.
+   */
   const handlePointerUp = useCallback(
     () => {
       if (panning.current) {
@@ -519,8 +569,8 @@ export function Canvas() {
           const clickThreshold = 4 / viewport.scale;
           if (moved < clickThreshold) {
             // A click, not a drag: enter/stay in multi-point mode instead
-            // of finishing — matches  dual click-to-build-a-
-            // polyline vs. drag-for-a-simple-segment behavior.
+            // of finishing — this is the dual "click to build a
+            // polyline vs. drag for a simple segment" behavior.
             drawing.current = { ...drawing.current, isMultiPoint: true };
             lastPointClick.current = { x: drawing.current.downAt.x, y: drawing.current.downAt.y, time: Date.now() };
             return;
@@ -554,6 +604,7 @@ export function Canvas() {
     [commitElement, setSelectedIds, tool, setTool, marqueeRect, viewport.scale],
   );
 
+  /** Mouse-wheel/trackpad zoom, keeping the point under the cursor fixed on screen as the scale changes. */
   const handleWheel = useCallback(
     (e: KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
@@ -582,7 +633,7 @@ export function Canvas() {
     [viewport, setViewport],
   );
 
-  // Basic two-finger pinch-to-zoom + pan for touch devices.
+  /** Basic two-finger pinch-to-zoom + pan for touch devices, keeping the pinch midpoint fixed on screen. */
   const handleTouchMove = useCallback(
     (e: KonvaEventObject<TouchEvent>) => {
       const touches = e.evt.touches;
@@ -621,10 +672,12 @@ export function Canvas() {
     [viewport, setViewport],
   );
 
+  /** Resets pinch-zoom tracking once a touch gesture ends. */
   const handleTouchEnd = useCallback(() => {
     lastPinchDist.current = null;
   }, []);
 
+  /** Element click/tap: replaces the selection, or toggles membership in it when Shift is held. */
   const handleSelect = useCallback(
     (id: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (tool !== 'select') return;
@@ -643,6 +696,8 @@ export function Canvas() {
   // text) — they're independent top-level elements connected only by id,
   // so moving/resizing the container has to explicitly push their
   // endpoints along too.
+
+  /** Mid-drag/transform: re-snaps every arrow bound to `container` and broadcasts each one (no history entry). */
   const followBoundArrowsLive = useCallback(
     (container: Element) => {
       if (!isContainerType(container.type)) return;
@@ -656,12 +711,14 @@ export function Canvas() {
     [applyElement],
   );
 
+  /** End of drag/transform: computes the final re-snapped position of every arrow bound to `container`, for the caller to commit. */
   const followBoundArrowsFinal = useCallback((container: Element): Element[] => {
     if (!isContainerType(container.type)) return [];
     const boundArrows = findBoundArrows(Object.values(useBoardStore.getState().elements), container.id);
     return boundArrows.map((arrow) => recomputeBoundArrow(arrow, container));
   }, []);
 
+  /** Mid-drag: broadcasts the dragged element's tentative position (Konva already moves it locally) and drags any bound arrows along with it. */
   const handleShapeDragMove = useCallback(
     (id: string, node: Konva.Node) => {
       const element = useBoardStore.getState().elements[id];
@@ -680,6 +737,7 @@ export function Canvas() {
     [followBoundArrowsLive],
   );
 
+  /** End of drag: bakes the node's final position into the element, commits it (and any bound arrows) as one history entry, and broadcasts. */
   const handleShapeDragEnd = useCallback(
     (id: string, node: Konva.Node) => {
       const element = useBoardStore.getState().elements[id];
@@ -715,6 +773,7 @@ export function Canvas() {
     [commitElement, commitElements, followBoundArrowsFinal],
   );
 
+  /** Mid-resize/rotate: broadcasts every selected node's tentative baked geometry and drags any bound arrows along with it. */
   const handleTransform = useCallback(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -727,6 +786,12 @@ export function Canvas() {
     }
   }, [followBoundArrowsLive]);
 
+  /**
+   * End of resize/rotate: bakes each transformed node's final geometry,
+   * resets the node's own scale/position so the next transform starts
+   * clean, grows a resized container to keep fitting its bound text if
+   * needed, and commits everything (plus any bound arrows) together.
+   */
   const handleTransformEnd = useCallback(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -760,9 +825,11 @@ export function Canvas() {
     }
   }, [commitElement, commitElements, followBoundArrowsFinal]);
 
-  // Keyboard: delete selection, Ctrl/Cmd+D to duplicate, Enter/Escape to
-  // finish a multi-point line/arrow currently being built by clicking.
+  // Keyboard: delete selection, Ctrl/Cmd+D to duplicate, Ctrl/Cmd+C/V to
+  // copy/paste, Enter/Escape to finish a multi-point line/arrow
+  // currently being built by clicking.
   useEffect(() => {
+    /** Global keydown handler for the shortcuts above — ignored while focus is in a text input/textarea. */
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;

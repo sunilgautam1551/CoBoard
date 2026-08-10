@@ -1,5 +1,6 @@
 import { NewBoardButton } from '@/features/board/components/NewBoardButton';
 
+/** Marketing landing page at "/" — the only entry point that isn't already a board. */
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6 text-center">

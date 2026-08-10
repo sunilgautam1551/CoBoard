@@ -5,6 +5,14 @@ import { useBoardStore } from '@/store/useBoardStore';
 // A small filled cursor-arrow, tip at (0,0).
 const CURSOR_PATH = 'M0 0 L0 14 L4 10.5 L6.5 15.5 L8.5 14.5 L6 9.5 L11 9.5 Z';
 
+/**
+ * Konva layer that draws every other connected participant's live
+ * cursor (arrow glyph + name tag) at their last-broadcast board
+ * position. Rendered as its own `Layer` sibling to the main content
+ * layer so cursor redraws never invalidate/re-batch the element layer.
+ * Counter-scales against the current zoom so cursors stay a constant
+ * on-screen size regardless of how far the board is zoomed in or out.
+ */
 export function RemoteCursors() {
   const participants = usePresenceStore((s) => s.participants);
   const cursors = usePresenceStore((s) => s.cursors);

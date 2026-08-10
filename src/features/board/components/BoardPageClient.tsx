@@ -17,6 +17,13 @@ const BoardCanvas = dynamic(
 
 type Props = { boardId: string; initialElements: Element[] };
 
+/**
+ * Thin client boundary between the server-rendered board route and the
+ * canvas itself. `BoardCanvas` is dynamically imported with `ssr: false`
+ * because it touches `window`/Konva's canvas APIs and has nothing
+ * meaningful to render on the server — this component just carries the
+ * server-fetched `initialElements` across that boundary.
+ */
 export function BoardPageClient({ boardId, initialElements }: Props) {
   return <BoardCanvas boardId={boardId} initialElements={initialElements} />;
 }

@@ -5,10 +5,17 @@ import { usePresenceStore } from './usePresenceStore';
 import { useBoardStore } from '@/store/useBoardStore';
 import { NameEditorPopover } from './NameEditorPopover';
 
+/** First letter of a display name, upper-cased, for a compact avatar glyph. */
 function initial(name: string): string {
   return name.charAt(0).toUpperCase();
 }
 
+/**
+ * Toolbar avatar row: your own avatar (click to rename, via
+ * `NameEditorPopover`) plus up to four other connected participants,
+ * overlapping like a typical "who's here" stack, with a "+N" overflow
+ * count and a plain online-count label alongside it.
+ */
 export function AvatarStack() {
   const participants = usePresenceStore((s) => s.participants);
   const selfName = useBoardStore((s) => s.name);

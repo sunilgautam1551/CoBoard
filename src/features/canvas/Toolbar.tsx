@@ -23,6 +23,13 @@ const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
 
 type Props = { onOpenShortcuts: () => void };
 
+/**
+ * Top-center floating toolbar: the tool picker, undo/redo, and the
+ * "who's here / share / shortcuts / clear" action group. Owns only its
+ * own UI state (the roving-tabindex focus target, the clear
+ * confirmation dialog); everything about the board itself lives in
+ * `useBoardStore` and is read/written through its actions.
+ */
 export function Toolbar({ onOpenShortcuts }: Props) {
   const tool = useBoardStore((s) => s.tool);
   const setTool = useBoardStore((s) => s.setTool);
@@ -35,6 +42,7 @@ export function Toolbar({ onOpenShortcuts }: Props) {
   const toolButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
+  /** Wipes every element from the board (after the user has confirmed) and broadcasts the deletion. */
   function handleClear() {
     const { elements, clientId } = useBoardStore.getState();
     const ids = Object.keys(elements);
@@ -46,8 +54,10 @@ export function Toolbar({ onOpenShortcuts }: Props) {
     setConfirmClearOpen(false);
   }
 
-  // Roving tabindex (WAI-ARIA toolbar pattern): only the active tool is
-  // tab-stoppable; arrow keys move focus between the others.
+  /**
+   * Roving tabindex (WAI-ARIA toolbar pattern): only the active tool is
+   * tab-stoppable; arrow keys move focus between the others.
+   */
   function handleToolsKeyDown(e: React.KeyboardEvent) {
     const currentIndex = TOOLS.findIndex((t) => t.tool === tool);
     let nextIndex: number | null = null;

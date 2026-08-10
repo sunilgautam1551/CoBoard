@@ -31,6 +31,12 @@ const SHORTCUTS: [string, string][] = [
 
 type Props = { open: boolean; onClose: () => void };
 
+/**
+ * "?" modal listing every keyboard shortcut and mouse gesture the
+ * canvas responds to. Purely informational — closes on Escape, on a
+ * backdrop click, or via its own close button, and restores focus to
+ * whatever triggered it on close.
+ */
 export function ShortcutsOverlay({ open, onClose }: Props) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);

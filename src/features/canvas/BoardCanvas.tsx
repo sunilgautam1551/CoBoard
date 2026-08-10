@@ -14,6 +14,14 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 type Props = { boardId: string; initialElements: Element[] };
 
+/**
+ * Top-level board screen: wires together the Konva canvas, the floating
+ * toolbar/style-panel chrome, keyboard shortcuts, persistence, and
+ * realtime sync for a single board. This is the component that owns
+ * the board's identity — it seeds the store from `initialElements` on
+ * mount/board-change and hands `boardId` to the persistence and sync
+ * hooks so every write knows which row/channel it belongs to.
+ */
 export function BoardCanvas({ boardId, initialElements }: Props) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const toggleShortcuts = useCallback(() => setShortcutsOpen((v) => !v), []);

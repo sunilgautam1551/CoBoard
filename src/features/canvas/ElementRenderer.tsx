@@ -16,6 +16,7 @@ import { buildArrowhead, type ArrowheadMarker } from './lib/arrowhead';
 import { TEXT_FONT_FAMILY } from './lib/text';
 import { getBoundTextLocalBox } from './lib/boundText';
 
+/** Renders one end-of-line marker (dot, bar, or triangle) produced by `buildArrowhead`. */
 function ArrowheadMarkerView({ marker, stroke, strokeWidth }: { marker: ArrowheadMarker; stroke: string; strokeWidth: number }) {
   if (marker.kind === 'dot') {
     return <Circle x={marker.x} y={marker.y} radius={marker.radius} fill={stroke} listening={false} />;
@@ -54,7 +55,8 @@ type Props = {
  * of its Group — nesting it means it automatically moves/rotates with
  * the container (Konva applies the parent transform to children for
  * free), and `listening={false}` means clicks/taps on the glyphs fall
- * through to the container's own hit target beneath, matching
+ * through to the container's own hit target beneath it, so the shape
+ * (not the label) is what gets selected.
  */
 function BoundTextGlyphs({ container, text }: { container: Element; text: Element }) {
   const box = useMemo(
@@ -78,8 +80,18 @@ function BoundTextGlyphs({ container, text }: { container: Element; text: Elemen
   );
 }
 
-// Selection feedback comes entirely from the Transformer's own outline
-// and handles (or the endpoint circles for line/arrow) — matching
+/**
+ * Renders a single board element as native Konva nodes — the sketchy
+ * rough.js outline/fill for shapes, a stroked path for pen strokes, an
+ * arrow/line with optional per-end markers, or plain text. This is the
+ * only place element geometry is translated into what actually appears
+ * on screen; `Canvas` decides *which* elements to render and in what
+ * order, this component decides *how*.
+ *
+ * Selection feedback comes entirely from the Transformer's own outline
+ * and handles (or the endpoint circles for a 2-point line/arrow) —
+ * elements never draw their own "I'm selected" highlight.
+ */
 export function ElementRenderer({
   element,
   selectable,

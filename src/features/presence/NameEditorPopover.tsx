@@ -5,6 +5,12 @@ import { useBoardStore } from '@/store/useBoardStore';
 
 type Props = { onClose: () => void };
 
+/**
+ * Small popover, anchored under the user's own avatar, for editing
+ * their display name. Closes on Escape, on a click outside itself, or
+ * after a successful save; an empty/whitespace-only value is treated as
+ * "cancel" rather than clearing the name entirely.
+ */
 export function NameEditorPopover({ onClose }: Props) {
   const name = useBoardStore((s) => s.name);
   const setName = useBoardStore((s) => s.setName);
@@ -34,6 +40,7 @@ export function NameEditorPopover({ onClose }: Props) {
     };
   }, [onClose]);
 
+  /** Commits the edited name (ignoring a blank value) and closes the popover. */
   function save() {
     if (value.trim()) setName(value);
     onClose();

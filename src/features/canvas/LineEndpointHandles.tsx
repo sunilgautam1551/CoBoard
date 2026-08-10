@@ -7,10 +7,12 @@ import type { Element } from '@/types';
 import { applyEndpointBindings } from './lib/binding';
 
 /**
- * Endpoint handles for a single selected line/arrow —
- * drag either end directly, instead of a generic bounding-box
- * Transformer (which reads as fiddly for a thin diagonal shape: you're
- * fighting 8 box handles to move one point).
+ * Endpoint-drag handles for a single selected 2-point line/arrow — drag
+ * either end directly, instead of a generic bounding-box Transformer
+ * (which reads as fiddly for a thin diagonal shape: you're fighting 8
+ * box handles to move one point). Only used for exactly-2-point
+ * lines/arrows; a multi-point polyline falls back to the Transformer
+ * since these handles only ever model a single segment.
  */
 export function LineEndpointHandles({ element, scale }: { element: Element; scale: number }) {
   const applyElement = useBoardStore((s) => s.applyElement);
@@ -19,6 +21,7 @@ export function LineEndpointHandles({ element, scale }: { element: Element; scal
   const radius = 6 / scale;
   const strokeWidth = 2 / scale;
 
+  /** Live-updates the dragged endpoint's position (no history entry) and broadcasts it, mid-drag. */
   function move(which: 'start' | 'end', node: Konva.Node) {
     const next =
       which === 'start'
@@ -29,6 +32,7 @@ export function LineEndpointHandles({ element, scale }: { element: Element; scal
     useSyncStore.getState().sendUpsertThrottled(updated);
   }
 
+  /** Finalizes the drag: re-evaluates shape binding at the new position, then commits and broadcasts. */
   function commit(which: 'start' | 'end', node: Konva.Node) {
     const next =
       which === 'start'

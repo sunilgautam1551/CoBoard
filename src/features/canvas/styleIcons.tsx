@@ -2,6 +2,7 @@
 // (not full components) since they're purely decorative glyphs picked
 // by label/value, never independently re-rendered.
 
+/** Single horizontal line whose thickness previews a stroke-width option. */
 export function StrokeWidthIcon({ weight }: { weight: number }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -10,6 +11,7 @@ export function StrokeWidthIcon({ weight }: { weight: number }) {
   );
 }
 
+/** Horizontal line previewing solid/dashed/dotted via an optional SVG dash pattern. */
 export function StrokeStyleIcon({ dash }: { dash?: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -27,6 +29,7 @@ export function StrokeStyleIcon({ dash }: { dash?: string }) {
   );
 }
 
+/** Wavy line whose curve height previews a "sloppiness"/roughness preset. */
 export function SloppinessIcon({ amplitude }: { amplitude: number }) {
   const d = `M1,8 Q4,${8 - amplitude} 8,8 T15,8`;
   return (
@@ -36,6 +39,7 @@ export function SloppinessIcon({ amplitude }: { amplitude: number }) {
   );
 }
 
+/** Square with either sharp or rounded corners, previewing the edges option. */
 export function EdgesIcon({ round }: { round: boolean }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -53,6 +57,7 @@ export function EdgesIcon({ round }: { round: boolean }) {
   );
 }
 
+/** Square filled solid, or hatched/cross-hatched, previewing a fill-style option. */
 export function FillStyleIcon({ style }: { style: 'hachure' | 'cross-hatch' | 'solid' }) {
   if (style === 'solid') {
     return (
@@ -76,6 +81,7 @@ export function FillStyleIcon({ style }: { style: 'hachure' | 'cross-hatch' | 's
   );
 }
 
+/** Three ragged lines aligned left/center/right, previewing a text-align option. */
 export function TextAlignIcon({ align }: { align: 'left' | 'center' | 'right' }) {
   const widths = [10, 7, 12];
   const xFor = (w: number) => (align === 'left' ? 2 : align === 'center' ? 8 - w / 2 : 14 - w);
@@ -88,6 +94,7 @@ export function TextAlignIcon({ align }: { align: 'left' | 'center' | 'right' })
   );
 }
 
+/** Two overlapping squares indicating "bring to front" or "send to back". */
 export function LayerIcon({ variant }: { variant: 'front' | 'back' }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -97,6 +104,7 @@ export function LayerIcon({ variant }: { variant: 'front' | 'back' }) {
   );
 }
 
+/** Two overlapping squares with an open corner — the "duplicate" action icon. */
 export function DuplicateIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -106,6 +114,7 @@ export function DuplicateIcon() {
   );
 }
 
+/** Trash-can glyph — the "delete" action icon. */
 export function TrashIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -121,6 +130,7 @@ export function TrashIcon() {
   );
 }
 
+/** Short line ending in the given arrowhead marker — previews a start/end arrowhead option. */
 export function ArrowheadIcon({ style }: { style: 'none' | 'triangle' | 'triangle_outline' | 'bar' | 'dot' }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

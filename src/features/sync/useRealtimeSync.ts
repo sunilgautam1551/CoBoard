@@ -13,12 +13,18 @@ import type { Element, Presence } from '@/types';
 
 type UpsertPayload = { element: Element };
 type DeletePayload = { id: string; updatedAt: number; updatedBy: string };
+type CursorPayload = { clientId: string; cursor: { x: number; y: number } | null };
 type BufferedOp = { kind: 'upsert'; payload: UpsertPayload } | { kind: 'delete'; payload: DeletePayload };
+
+// What gets `track()`ed via Presence: identity only. Cursor position is
+// NOT included — see the comment above the 'system' error handler below
+// for why sending it via presence.track() is actively dangerous.
+type PresenceIdentity = Omit<Presence, 'cursor'>;
 
 /**
  * Subscribes to `board:{boardId}` and wires broadcast events into the
- * store's LWW merge (PRD §7), tracks presence/cursor for this client,
- * and re-hydrates from the latest snapshot after a reconnect.
+ * store's LWW merge (PRD §7), tracks presence for this client, and
+ * re-hydrates from the latest snapshot after a reconnect.
  */
 export function useRealtimeSync(boardId: string) {
   const mergeRemoteUpsert = useBoardStore((s) => s.mergeRemoteUpsert);
@@ -72,29 +78,39 @@ export function useRealtimeSync(boardId: string) {
         handleDelete(message.payload as DeletePayload);
       });
 
+      // Cursor position rides broadcast, not presence — see below.
+      channel.on('broadcast', { event: 'cursor:move' }, (message) => {
+        const payload = message.payload as CursorPayload;
+        if (payload.clientId === clientId) return;
+        usePresenceStore.getState().updateCursor(payload.clientId, payload.cursor);
+      });
+
       channel.on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<Presence>();
+        const state = channel.presenceState<PresenceIdentity>();
         const participants: Record<string, Presence> = {};
         for (const key of Object.keys(state)) {
           if (key === clientId) continue; // never include ourselves
           const entry = state[key][0];
-          if (entry) participants[key] = entry;
+          if (entry) participants[key] = { ...entry, cursor: null };
         }
         usePresenceStore.getState().setParticipants(participants);
       });
 
-      // Supabase Realtime enforces server-side rate limits (e.g.
-      // "Client presence rate limit exceeded") and force-closes the
-      // channel when hit, with no automatic client-side recovery.
-      // config.cursorThrottleMs is tuned to stay well under it in
-      // normal use, but if it's ever hit anyway, tear down and rejoin
-      // rather than leaving sync silently dead for the session.
+      // Supabase Realtime enforces a separate, much stricter rate limit
+      // specifically on presence.track() calls ("Client presence rate
+      // limit exceeded") and force-closes the channel when it's hit —
+      // confirmed live: this tripped even at a 150ms cursor-tracking
+      // throttle under completely normal mouse movement, while
+      // broadcast messages at the same frequency never did. So cursor
+      // position is sent via broadcast (like element ops) instead of
+      // presence.track(); presence now only tracks identity once per
+      // (re)connect, which stays far under any reasonable limit.
       //
-      // Reconnecting immediately would just retrip the same rate-limit
-      // window and loop forever (this is exactly what happened before
-      // backoff was added — a tight reconnect loop with a toast on
-      // every attempt). Exponential backoff, capped, and only one
-      // toast per retry series.
+      // Kept as a safety net regardless: if this class of error ever
+      // fires anyway, tear down and rejoin with backoff rather than
+      // leaving sync silently dead for the session. Immediate retry
+      // was tried first and looped forever (retripping the same
+      // window) — exponential backoff, one toast per retry series.
       channel.on('system', {}, (payload) => {
         if (payload.status !== 'error') return;
         console.warn('[sync] realtime system error, will rejoin channel:', payload.message);
@@ -113,7 +129,10 @@ export function useRealtimeSync(boardId: string) {
         reconnectTimeout = setTimeout(connect, delay);
       });
 
-      function send(event: 'element:upsert' | 'element:delete', payload: UpsertPayload | DeletePayload) {
+      function send(
+        event: 'element:upsert' | 'element:delete' | 'cursor:move',
+        payload: UpsertPayload | DeletePayload | CursorPayload,
+      ) {
         const size = new Blob([JSON.stringify(payload)]).size;
         if (size > config.maxMessageBytes) {
           console.warn(`[sync] dropped ${event}: payload is ${size} bytes (max ${config.maxMessageBytes})`);
@@ -128,13 +147,12 @@ export function useRealtimeSync(boardId: string) {
         send('element:delete', { id, updatedAt, updatedBy });
 
       let lastCursor: { x: number; y: number } | null = null;
-      const trackCursorRaw = (cursor: { x: number; y: number } | null) => {
-        channel.track({ clientId, name, color, cursor } satisfies Presence);
-      };
+      const sendCursor = (cursor: { x: number; y: number } | null) =>
+        send('cursor:move', { clientId, cursor });
       const updateCursorThrottled = throttle((x: number, y: number) => {
         if (lastCursor && lastCursor.x === x && lastCursor.y === y) return;
         lastCursor = { x, y };
-        trackCursorRaw({ x, y });
+        sendCursor({ x, y });
       }, config.cursorThrottleMs);
 
       let hasSubscribedOnce = false;
@@ -143,7 +161,7 @@ export function useRealtimeSync(boardId: string) {
 
         if (status === 'SUBSCRIBED') {
           reconnectAttempts = 0;
-          trackCursorRaw(null);
+          channel.track({ clientId, name, color } satisfies PresenceIdentity);
 
           if (hasSubscribedOnce) {
             // Reconnected after a drop — re-hydrate from the latest
@@ -166,7 +184,7 @@ export function useRealtimeSync(boardId: string) {
             updateCursor: updateCursorThrottled,
             clearCursor: () => {
               lastCursor = null;
-              trackCursorRaw(null);
+              sendCursor(null);
             },
           });
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {

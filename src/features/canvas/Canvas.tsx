@@ -5,6 +5,7 @@ import { Stage, Layer, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useBoardStore } from '@/store/useBoardStore';
+import { useSyncStore } from '@/features/sync/useSyncStore';
 import { config } from '@/lib/config';
 import { newElementId } from '@/lib/utils';
 import type { Element, ElementType } from '@/types';
@@ -152,7 +153,10 @@ export function Canvas() {
       if (tool === 'eraser') {
         const target = e.target;
         if (target !== stage && target.id()) {
-          deleteElements([target.id()]);
+          const id = target.id();
+          const updatedAt = Date.now();
+          deleteElements([id]);
+          useSyncStore.getState().sendDelete(id, updatedAt, useBoardStore.getState().clientId);
         }
         return;
       }
@@ -199,7 +203,10 @@ export function Canvas() {
       if (tool === 'eraser' && e.evt.buttons === 1) {
         const target = e.target;
         if (target !== stage && target.id()) {
-          deleteElements([target.id()]);
+          const id = target.id();
+          const updatedAt = Date.now();
+          deleteElements([id]);
+          useSyncStore.getState().sendDelete(id, updatedAt, useBoardStore.getState().clientId);
         }
         return;
       }
@@ -209,22 +216,27 @@ export function Canvas() {
       const current = useBoardStore.getState().elements[drawing.current.id];
       if (!current) return;
 
+      let next: Element | null = null;
       if (current.type === 'rect' || current.type === 'ellipse') {
-        applyElement({
+        next = {
           ...current,
           w: world.x - drawing.current.startX,
           h: world.y - drawing.current.startY,
-        });
+        };
       } else if (current.type === 'line' || current.type === 'arrow') {
-        applyElement({
+        next = {
           ...current,
           points: [drawing.current.startX, drawing.current.startY, world.x, world.y],
-        });
+        };
       } else if (current.type === 'path') {
-        applyElement({
+        next = {
           ...current,
           points: [...(current.points ?? []), world.x, world.y],
-        });
+        };
+      }
+      if (next) {
+        applyElement(next);
+        useSyncStore.getState().sendUpsertThrottled(next);
       }
     },
     [tool, applyElement, deleteElements, setViewport],
@@ -241,14 +253,16 @@ export function Canvas() {
       if (current) {
         // Normalize negative width/height for rect/ellipse so hit-testing
         // and selection behave correctly.
+        let final: Element;
         if (current.type === 'rect' || current.type === 'ellipse') {
           const x = current.w! < 0 ? current.x! + current.w! : current.x!;
           const y = current.h! < 0 ? current.y! + current.h! : current.y!;
-          const normalized = { ...current, x, y, w: Math.abs(current.w!), h: Math.abs(current.h!) };
-          commitElement(normalized);
+          final = { ...current, x, y, w: Math.abs(current.w!), h: Math.abs(current.h!) };
         } else {
-          commitElement({ ...current, updatedAt: Date.now() });
+          final = { ...current, updatedAt: Date.now() };
         }
+        commitElement(final);
+        useSyncStore.getState().sendUpsert(final);
         if (tool !== 'pen') setTool('select');
         setSelectedIds([current.id]);
       }
@@ -340,30 +354,57 @@ export function Canvas() {
     [tool, setSelectedIds],
   );
 
+  const handleShapeDragMove = useCallback((id: string, node: Konva.Node) => {
+    const element = useBoardStore.getState().elements[id];
+    if (!element) return;
+    const tentative: Element =
+      element.type === 'line' || element.type === 'arrow' || element.type === 'path'
+        ? { ...element, points: translatePoints(element.points ?? [], node.x(), node.y()) }
+        : {
+            ...element,
+            x: element.type === 'ellipse' ? node.x() - (element.w ?? 0) / 2 : node.x(),
+            y: element.type === 'ellipse' ? node.y() - (element.h ?? 0) / 2 : node.y(),
+          };
+    useSyncStore.getState().sendUpsertThrottled(tentative);
+  }, []);
+
   const handleShapeDragEnd = useCallback(
     (id: string, node: Konva.Node) => {
       const element = useBoardStore.getState().elements[id];
       if (!element) return;
+      let final: Element;
       if (element.type === 'line' || element.type === 'arrow' || element.type === 'path') {
         const dx = node.x();
         const dy = node.y();
         node.position({ x: 0, y: 0 });
-        commitElement({
+        final = {
           ...element,
           points: translatePoints(element.points ?? [], dx, dy),
           updatedAt: Date.now(),
-        });
+        };
       } else {
-        commitElement({
+        final = {
           ...element,
           x: element.type === 'ellipse' ? node.x() - (element.w ?? 0) / 2 : node.x(),
           y: element.type === 'ellipse' ? node.y() - (element.h ?? 0) / 2 : node.y(),
           updatedAt: Date.now(),
-        });
+        };
       }
+      commitElement(final);
+      useSyncStore.getState().sendUpsert(final);
     },
     [commitElement],
   );
+
+  const handleTransform = useCallback(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    for (const node of tr.nodes()) {
+      const element = useBoardStore.getState().elements[node.id()];
+      if (!element) continue;
+      useSyncStore.getState().sendUpsertThrottled(bakeNodeTransform(element, node));
+    }
+  }, []);
 
   const handleTransformEnd = useCallback(() => {
     const tr = transformerRef.current;
@@ -372,14 +413,15 @@ export function Canvas() {
       const id = node.id();
       const element = useBoardStore.getState().elements[id];
       if (!element) continue;
-      const baked = bakeNodeTransform(element, node);
+      const baked = { ...bakeNodeTransform(element, node), updatedAt: Date.now() };
       node.scaleX(1);
       node.scaleY(1);
       if (baked.type === 'line' || baked.type === 'arrow' || baked.type === 'path') {
         node.position({ x: 0, y: 0 });
         node.rotation(0);
       }
-      commitElement({ ...baked, updatedAt: Date.now() });
+      commitElement(baked);
+      useSyncStore.getState().sendUpsert(baked);
     }
   }, [commitElement]);
 
@@ -390,7 +432,12 @@ export function Canvas() {
       if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
+        const updatedAt = Date.now();
+        const clientId = useBoardStore.getState().clientId;
         deleteElements(selectedIds);
+        for (const id of selectedIds) {
+          useSyncStore.getState().sendDelete(id, updatedAt, clientId);
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -433,12 +480,14 @@ export function Canvas() {
                 isSelected={selectedIds.includes(element.id)}
                 selectable={tool === 'select'}
                 onSelect={handleSelect}
+                onDragMove={handleShapeDragMove}
                 onDragEnd={handleShapeDragEnd}
                 registerNode={registerNode}
               />
             ))}
             <Transformer
               ref={transformerRef}
+              onTransform={handleTransform}
               onTransformEnd={handleTransformEnd}
               rotateEnabled
               flipEnabled={false}

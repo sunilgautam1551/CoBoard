@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Element, Tool } from '@/types';
 import { newClientId } from '@/lib/utils';
 import { config } from '@/lib/config';
+import { shouldApplyRemote } from '@/features/sync/lww';
 
 export type ElementsMap = Record<string, Element>;
 
@@ -47,6 +48,11 @@ interface BoardState {
   clearBoard: () => void;
   undo: () => void;
   redo: () => void;
+
+  /** Applies a remote upsert if it wins the LWW check. No history entry. */
+  mergeRemoteUpsert: (element: Element) => void;
+  /** Applies a remote delete if it wins the LWW check. No history entry. */
+  mergeRemoteDelete: (id: string, updatedAt: number, updatedBy: string) => void;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
@@ -143,4 +149,20 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       selectedIds: [],
     }));
   },
+
+  mergeRemoteUpsert: (element) =>
+    set((s) => {
+      const local = s.elements[element.id];
+      if (!shouldApplyRemote(element.updatedAt, element.updatedBy, local)) return s;
+      return { elements: { ...s.elements, [element.id]: element } };
+    }),
+
+  mergeRemoteDelete: (id, updatedAt, updatedBy) =>
+    set((s) => {
+      const local = s.elements[id];
+      if (!local || !shouldApplyRemote(updatedAt, updatedBy, local)) return s;
+      const next = { ...s.elements };
+      delete next[id];
+      return { elements: next, selectedIds: s.selectedIds.filter((sid) => sid !== id) };
+    }),
 }));

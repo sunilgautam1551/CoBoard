@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
 import { useBoardStore } from '@/store/useBoardStore';
+import { useSyncStore } from '@/features/sync/useSyncStore';
 
 type Props = {
   elementId: string;
@@ -35,9 +36,13 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
     if (!element) return;
     const trimmed = value.trim();
     if (trimmed.length === 0) {
+      const updatedAt = Date.now();
       deleteElements([element.id]);
+      useSyncStore.getState().sendDelete(element.id, updatedAt, element.updatedBy);
     } else {
-      commitElement({ ...element, text: value, updatedAt: Date.now() });
+      const final = { ...element, text: value, updatedAt: Date.now() };
+      commitElement(final);
+      useSyncStore.getState().sendUpsert(final);
     }
     onDone();
   }

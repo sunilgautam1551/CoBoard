@@ -9,6 +9,7 @@ type Props = {
   isSelected: boolean;
   selectable: boolean;
   onSelect: (id: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onDragMove: (id: string, node: Konva.Node) => void;
   onDragEnd: (id: string, node: Konva.Node) => void;
   registerNode: (id: string, node: Konva.Node | null) => void;
 };
@@ -18,6 +19,7 @@ export function ElementRenderer({
   isSelected,
   selectable,
   onSelect,
+  onDragMove,
   onDragEnd,
   registerNode,
 }: Props) {
@@ -26,6 +28,8 @@ export function ElementRenderer({
     draggable: selectable,
     onClick: (e: KonvaEventObject<MouseEvent>) => onSelect(element.id, e),
     onTap: (e: KonvaEventObject<TouchEvent>) => onSelect(element.id, e),
+    onDragMove: (e: KonvaEventObject<DragEvent>) =>
+      onDragMove(element.id, e.target),
     onDragEnd: (e: KonvaEventObject<DragEvent>) =>
       onDragEnd(element.id, e.target),
     ref: (node: Konva.Node | null) => registerNode(element.id, node),

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useBoardStore } from '@/store/useBoardStore';
 import type { Element } from '@/types';
 import { useSnapshotPersistence } from '@/features/board/hooks/useSnapshotPersistence';
+import { useRealtimeSync } from '@/features/sync/useRealtimeSync';
 import { Toolbar } from './Toolbar';
 import { Canvas } from './Canvas';
 import { ZoomIndicator } from './ZoomIndicator';
@@ -26,6 +27,7 @@ export function BoardCanvas({ boardId, initialElements }: Props) {
   }, [boardId, initialElements, loadSnapshot, setBoardId]);
 
   useSnapshotPersistence(boardId);
+  useRealtimeSync(boardId);
 
   return (
     <div className="flex h-dvh w-full flex-col">

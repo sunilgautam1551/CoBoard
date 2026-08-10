@@ -1,6 +1,7 @@
 'use client';
 
 import { useBoardStore } from '@/store/useBoardStore';
+import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Tool } from '@/types';
 import { ShareButton } from '@/features/board/components/ShareButton';
 
@@ -37,7 +38,13 @@ export function Toolbar() {
 
   function handleClear() {
     if (window.confirm('Clear the entire board? This cannot be undone.')) {
+      const { elements, clientId } = useBoardStore.getState();
+      const ids = Object.keys(elements);
+      const updatedAt = Date.now();
       clearBoard();
+      for (const id of ids) {
+        useSyncStore.getState().sendDelete(id, updatedAt, clientId);
+      }
     }
   }
 

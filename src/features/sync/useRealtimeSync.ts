@@ -30,6 +30,8 @@ export function useRealtimeSync(boardId: string) {
     const { clientId, name, color } = useBoardStore.getState();
     let disposed = false;
     let activeChannel: RealtimeChannel | null = null;
+    let reconnectAttempts = 0;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // Ops that arrive before local hydration finishes are buffered and
     // replayed after (PRD §7.6).
@@ -87,14 +89,28 @@ export function useRealtimeSync(boardId: string) {
       // config.cursorThrottleMs is tuned to stay well under it in
       // normal use, but if it's ever hit anyway, tear down and rejoin
       // rather than leaving sync silently dead for the session.
+      //
+      // Reconnecting immediately would just retrip the same rate-limit
+      // window and loop forever (this is exactly what happened before
+      // backoff was added — a tight reconnect loop with a toast on
+      // every attempt). Exponential backoff, capped, and only one
+      // toast per retry series.
       channel.on('system', {}, (payload) => {
-        if (payload.status === 'error') {
-          console.warn('[sync] realtime system error, rejoining channel:', payload.message);
+        if (payload.status !== 'error') return;
+        console.warn('[sync] realtime system error, will rejoin channel:', payload.message);
+        supabase.removeChannel(channel);
+        if (activeChannel === channel) activeChannel = null;
+        if (disposed) return;
+
+        reconnectAttempts += 1;
+        if (reconnectAttempts === 1) {
           useToastStore.getState().addToast('Sync hiccup — reconnecting…', 'error');
-          supabase.removeChannel(channel);
-          if (activeChannel === channel) activeChannel = null;
-          connect();
         }
+        const delay = Math.min(
+          config.reconnectBaseDelayMs * 2 ** (reconnectAttempts - 1),
+          config.reconnectMaxDelayMs,
+        );
+        reconnectTimeout = setTimeout(connect, delay);
       });
 
       function send(event: 'element:upsert' | 'element:delete', payload: UpsertPayload | DeletePayload) {
@@ -126,6 +142,7 @@ export function useRealtimeSync(boardId: string) {
         useSyncStore.setState({ connected: status === 'SUBSCRIBED' });
 
         if (status === 'SUBSCRIBED') {
+          reconnectAttempts = 0;
           trackCursorRaw(null);
 
           if (hasSubscribedOnce) {
@@ -168,6 +185,7 @@ export function useRealtimeSync(boardId: string) {
 
     return () => {
       disposed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       usePresenceStore.getState().clear();
       useSyncStore.setState({
         connected: false,

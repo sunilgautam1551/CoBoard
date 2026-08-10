@@ -4,6 +4,7 @@ import { useBoardStore } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Tool } from '@/types';
 import { ShareButton } from '@/features/board/components/ShareButton';
+import { AvatarStack } from '@/features/presence/AvatarStack';
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
   { tool: 'select', label: 'Select', shortcut: 'V', icon: '⟡' },
@@ -156,7 +157,8 @@ export function Toolbar() {
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-3">
+        <AvatarStack />
         <ShareButton />
         <button
           type="button"

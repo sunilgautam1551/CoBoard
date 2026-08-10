@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Element, Tool } from '@/types';
-import { newClientId } from '@/lib/utils';
+import { newClientId, randomName, colorFromId } from '@/lib/utils';
 import { config } from '@/lib/config';
 import { shouldApplyRemote } from '@/features/sync/lww';
 
@@ -18,6 +18,8 @@ const DEFAULT_STYLE: Style = {
 
 interface BoardState {
   clientId: string;
+  name: string;
+  color: string;
   boardId: string;
   elements: ElementsMap;
   selectedIds: string[];
@@ -55,8 +57,12 @@ interface BoardState {
   mergeRemoteDelete: (id: string, updatedAt: number, updatedBy: string) => void;
 }
 
+const clientId = newClientId();
+
 export const useBoardStore = create<BoardState>((set, get) => ({
-  clientId: newClientId(),
+  clientId,
+  name: randomName(),
+  color: colorFromId(clientId),
   boardId: '',
   elements: {},
   selectedIds: [],

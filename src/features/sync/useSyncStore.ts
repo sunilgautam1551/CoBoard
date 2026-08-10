@@ -12,6 +12,10 @@ type SyncBus = {
   sendUpsert: (element: Element) => void;
   sendUpsertThrottled: (element: Element) => void;
   sendDelete: (id: string, updatedAt: number, updatedBy: string) => void;
+  /** Throttled presence cursor update (PRD §7.4/§7.5). */
+  updateCursor: (x: number, y: number) => void;
+  /** Immediately marks this client's cursor as off-canvas. */
+  clearCursor: () => void;
 };
 
 const noop = () => {};
@@ -21,4 +25,6 @@ export const useSyncStore = create<SyncBus>(() => ({
   sendUpsert: noop,
   sendUpsertThrottled: noop,
   sendDelete: noop,
+  updateCursor: noop,
+  clearCursor: noop,
 }));

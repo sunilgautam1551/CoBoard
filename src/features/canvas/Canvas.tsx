@@ -12,6 +12,7 @@ import type { Element, ElementType } from '@/types';
 import { ElementRenderer } from './ElementRenderer';
 import { getWorldPointer, bakeNodeTransform, translatePoints } from './lib/transform';
 import { TextEditor } from './TextEditor';
+import { RemoteCursors } from '@/features/presence/RemoteCursors';
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'ellipse', 'line', 'arrow'];
 
@@ -193,6 +194,9 @@ export function Canvas() {
       const stage = stageRef.current;
       if (!stage) return;
 
+      const world = getWorldPointer(stage);
+      useSyncStore.getState().updateCursor(world.x, world.y);
+
       if (panning.current) {
         const dx = e.evt.clientX - panning.current.startX;
         const dy = e.evt.clientY - panning.current.startY;
@@ -212,7 +216,6 @@ export function Canvas() {
       }
 
       if (!drawing.current) return;
-      const world = getWorldPointer(stage);
       const current = useBoardStore.getState().elements[drawing.current.id];
       if (!current) return;
 
@@ -468,6 +471,7 @@ export function Canvas() {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerLeave={() => useSyncStore.getState().clearCursor()}
           onWheel={handleWheel}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -496,6 +500,7 @@ export function Canvas() {
               }
             />
           </Layer>
+          <RemoteCursors />
         </Stage>
       )}
       {editingTextId && (

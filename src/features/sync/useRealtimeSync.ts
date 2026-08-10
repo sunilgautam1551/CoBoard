@@ -4,10 +4,12 @@ import { useEffect } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { useBoardStore } from '@/store/useBoardStore';
+import { usePresenceStore } from '@/features/presence/usePresenceStore';
+import { useToastStore } from '@/store/useToastStore';
 import { useSyncStore } from './useSyncStore';
 import { throttle } from '@/lib/throttle';
 import { config } from '@/lib/config';
-import type { Element } from '@/types';
+import type { Element, Presence } from '@/types';
 
 type UpsertPayload = { element: Element };
 type DeletePayload = { id: string; updatedAt: number; updatedBy: string };
@@ -15,8 +17,8 @@ type BufferedOp = { kind: 'upsert'; payload: UpsertPayload } | { kind: 'delete';
 
 /**
  * Subscribes to `board:{boardId}` and wires broadcast events into the
- * store's LWW merge (PRD §7). Ops that arrive before local hydration
- * finishes are buffered and replayed after (§7.6).
+ * store's LWW merge (PRD §7), tracks presence/cursor for this client,
+ * and re-hydrates from the latest snapshot after a reconnect.
  */
 export function useRealtimeSync(boardId: string) {
   const mergeRemoteUpsert = useBoardStore((s) => s.mergeRemoteUpsert);
@@ -24,6 +26,8 @@ export function useRealtimeSync(boardId: string) {
 
   useEffect(() => {
     if (!boardId) return;
+
+    const { clientId, name, color } = useBoardStore.getState();
 
     let ready = false;
     const buffer: BufferedOp[] = [];
@@ -45,7 +49,10 @@ export function useRealtimeSync(boardId: string) {
     }
 
     const channel: RealtimeChannel = supabase.channel(`board:${boardId}`, {
-      config: { broadcast: { self: false, ack: false } },
+      config: {
+        broadcast: { self: false, ack: false },
+        presence: { key: clientId },
+      },
     });
 
     channel.on('broadcast', { event: 'element:upsert' }, (message) => {
@@ -53,6 +60,17 @@ export function useRealtimeSync(boardId: string) {
     });
     channel.on('broadcast', { event: 'element:delete' }, (message) => {
       handleDelete(message.payload as DeletePayload);
+    });
+
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState<Presence>();
+      const participants: Record<string, Presence> = {};
+      for (const key of Object.keys(state)) {
+        if (key === clientId) continue; // never include ourselves
+        const entry = state[key][0];
+        if (entry) participants[key] = entry;
+      }
+      usePresenceStore.getState().setParticipants(participants);
     });
 
     function send(event: 'element:upsert' | 'element:delete', payload: UpsertPayload | DeletePayload) {
@@ -69,8 +87,39 @@ export function useRealtimeSync(boardId: string) {
     const sendDelete = (id: string, updatedAt: number, updatedBy: string) =>
       send('element:delete', { id, updatedAt, updatedBy });
 
-    channel.subscribe((status) => {
+    let lastCursor: { x: number; y: number } | null = null;
+    const trackCursorRaw = (cursor: { x: number; y: number } | null) => {
+      channel.track({ clientId, name, color, cursor } satisfies Presence);
+    };
+    const updateCursorThrottled = throttle((x: number, y: number) => {
+      if (lastCursor && lastCursor.x === x && lastCursor.y === y) return;
+      lastCursor = { x, y };
+      trackCursorRaw({ x, y });
+    }, config.cursorThrottleMs);
+
+    let hasSubscribedOnce = false;
+    channel.subscribe(async (status) => {
       useSyncStore.setState({ connected: status === 'SUBSCRIBED' });
+
+      if (status === 'SUBSCRIBED') {
+        trackCursorRaw(null);
+
+        if (hasSubscribedOnce) {
+          // Reconnected after a drop — re-hydrate from the latest
+          // snapshot in case ops were missed while offline (PRD §9/§10).
+          const { data } = await supabase
+            .from('boards')
+            .select('snapshot')
+            .eq('id', boardId)
+            .maybeSingle();
+          const snapshot = (data?.snapshot as Element[] | undefined) ?? [];
+          for (const element of snapshot) mergeRemoteUpsert(element);
+          useToastStore.getState().addToast('Reconnected — back in sync.', 'success');
+        }
+        hasSubscribedOnce = true;
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        useToastStore.getState().addToast('Connection lost — reconnecting…', 'error');
+      }
     });
 
     // Local hydration (from SSR/loadSnapshot props) is synchronous and
@@ -83,15 +132,28 @@ export function useRealtimeSync(boardId: string) {
       else mergeRemoteDelete(op.payload.id, op.payload.updatedAt, op.payload.updatedBy);
     }
 
-    useSyncStore.setState({ sendUpsert: sendUpsertRaw, sendUpsertThrottled, sendDelete });
+    useSyncStore.setState({
+      sendUpsert: sendUpsertRaw,
+      sendUpsertThrottled,
+      sendDelete,
+      updateCursor: updateCursorThrottled,
+      clearCursor: () => {
+        lastCursor = null;
+        trackCursorRaw(null);
+      },
+    });
 
     return () => {
       sendUpsertThrottled.cancel();
+      updateCursorThrottled.cancel();
+      usePresenceStore.getState().clear();
       useSyncStore.setState({
         connected: false,
         sendUpsert: () => {},
         sendUpsertThrottled: () => {},
         sendDelete: () => {},
+        updateCursor: () => {},
+        clearCursor: () => {},
       });
       supabase.removeChannel(channel);
     };

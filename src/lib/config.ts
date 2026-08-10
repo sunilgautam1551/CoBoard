@@ -5,7 +5,14 @@
 
 export const config = {
   // Realtime message-budget discipline (PRD §7.4)
-  cursorThrottleMs: 50,
+  //
+  // cursorThrottleMs is higher than the ~50ms the PRD suggests: at 50ms,
+  // Supabase Realtime's server-side "presence rate limit" trips during
+  // normal fast drawing (each pointermove tracks a new cursor position),
+  // and the server force-closes the channel with no client-side recovery
+  // — killing sync for that client. Verified against a live project;
+  // 150ms stays well under the limit while still reading as live.
+  cursorThrottleMs: 150,
   strokeFlushMs: 50,
   dragThrottleMs: 50,
   maxMessageBytes: 256 * 1024, // 256 KB hard cap enforced by Supabase Realtime

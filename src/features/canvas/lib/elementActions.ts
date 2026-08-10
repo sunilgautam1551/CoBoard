@@ -12,8 +12,8 @@ export function deleteSelectionAndBroadcast(ids: string[]) {
   if (ids.length === 0) return;
   const updatedAt = Date.now();
   const clientId = useBoardStore.getState().clientId;
-  useBoardStore.getState().deleteElements(ids);
-  for (const id of ids) useSyncStore.getState().sendDelete(id, updatedAt, clientId);
+  const deleted = useBoardStore.getState().deleteElements(ids);
+  for (const id of deleted) useSyncStore.getState().sendDelete(id, updatedAt, clientId);
 }
 
 export function reorderSelectionAndBroadcast(direction: 'front' | 'back') {

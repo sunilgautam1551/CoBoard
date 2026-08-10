@@ -21,6 +21,7 @@ import {
   deleteSelectionAndBroadcast,
   reorderSelectionAndBroadcast,
 } from './lib/elementActions';
+import { isContainerType, findBoundText, requiredContainerHeight } from './lib/boundText';
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'diamond', 'ellipse', 'line', 'arrow'];
 
@@ -111,18 +112,20 @@ export function Canvas() {
   const usesEndpointHandles =
     singleSelectedElement?.type === 'line' || singleSelectedElement?.type === 'arrow';
 
-  // Keep transformer in sync with selection.
+  // Keep transformer in sync with selection. Hidden entirely while a text
+  // (bound or standalone) is being edited — matches Excalidraw, which
+  // shows no resize handles during text entry.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    const nodes = usesEndpointHandles
+    const nodes = usesEndpointHandles || editingTextId
       ? []
       : selectedIds
           .map((id) => nodesRef.current.get(id))
           .filter((n): n is Konva.Node => Boolean(n));
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, elements, usesEndpointHandles]);
+  }, [selectedIds, elements, usesEndpointHandles, editingTextId]);
 
   const startShapeDraw = useCallback(
     (type: ElementType, world: { x: number; y: number }) => {
@@ -183,6 +186,37 @@ export function Canvas() {
     [style, commitElement, setSelectedIds, setTool],
   );
 
+  // Double-clicking inside a shape binds a label to it (Excalidraw's
+  // "container text") instead of dropping a free-floating text element
+  // on top — the label centers itself, wraps to the shape's width, and
+  // the shape grows to fit it instead of the text spilling out past it.
+  const createBoundTextAt = useCallback(
+    (container: Element) => {
+      const id = newElementId();
+      const now = Date.now();
+      const element: Element = {
+        id,
+        type: 'text',
+        text: '',
+        fontSize: style.fontSize,
+        stroke: style.stroke,
+        fill: style.fill,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+        textAlign: 'center',
+        containerId: container.id,
+        z: now,
+        updatedAt: now,
+        updatedBy: useBoardStore.getState().clientId,
+      };
+      commitElement(element);
+      setEditingTextId(id);
+      setSelectedIds([container.id]);
+      setTool('select');
+    },
+    [style, commitElement, setSelectedIds, setTool],
+  );
+
   const handleContextMenu = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
       e.evt.preventDefault();
@@ -236,8 +270,10 @@ export function Canvas() {
         if (target !== stage && target.id()) {
           const id = target.id();
           const updatedAt = Date.now();
-          deleteElements([id]);
-          useSyncStore.getState().sendDelete(id, updatedAt, useBoardStore.getState().clientId);
+          const deleted = deleteElements([id]);
+          for (const did of deleted) {
+            useSyncStore.getState().sendDelete(did, updatedAt, useBoardStore.getState().clientId);
+          }
         }
         return;
       }
@@ -255,26 +291,39 @@ export function Canvas() {
   );
 
   // Double-click with the select tool: matches Excalidraw's "you don't
-  // need a separate text tool" behavior. On an existing text element it
-  // re-opens it for editing (there was previously no way back into a
-  // text element once you clicked away — a real gap, not just a style
-  // difference). Anywhere else it creates a new one.
+  // need a separate text tool" behavior.
+  // - On an existing standalone text element, re-opens it for editing.
+  // - On a shape (rect/diamond/ellipse), opens its bound label if it has
+  //   one, or creates one — this is what a bound text's own Konva node
+  //   resolves to too, since it renders with listening=false and lets
+  //   clicks fall through to the container's hit target beneath it.
+  // - Anywhere else, creates a free-floating text element.
   const handleDoubleClick = useCallback(
     (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = stageRef.current;
       if (!stage || tool !== 'select') return;
       const target = e.target;
       if (target !== stage && target.id()) {
-        const existing = useBoardStore.getState().elements[target.id()];
-        if (existing?.type === 'text') {
-          setSelectedIds([existing.id]);
-          setEditingTextId(existing.id);
+        const clicked = useBoardStore.getState().elements[target.id()];
+        if (clicked?.type === 'text' && !clicked.containerId) {
+          setSelectedIds([clicked.id]);
+          setEditingTextId(clicked.id);
+          return;
+        }
+        if (clicked && isContainerType(clicked.type)) {
+          const bound = findBoundText(useBoardStore.getState().elements, clicked.id);
+          if (bound) {
+            setSelectedIds([clicked.id]);
+            setEditingTextId(bound.id);
+          } else {
+            createBoundTextAt(clicked);
+          }
           return;
         }
       }
       createTextAt(getWorldPointer(stage));
     },
-    [tool, setSelectedIds, createTextAt],
+    [tool, setSelectedIds, createTextAt, createBoundTextAt],
   );
 
   const handlePointerMove = useCallback(
@@ -308,8 +357,10 @@ export function Canvas() {
         if (target !== stage && target.id()) {
           const id = target.id();
           const updatedAt = Date.now();
-          deleteElements([id]);
-          useSyncStore.getState().sendDelete(id, updatedAt, useBoardStore.getState().clientId);
+          const deleted = deleteElements([id]);
+          for (const did of deleted) {
+            useSyncStore.getState().sendDelete(did, updatedAt, useBoardStore.getState().clientId);
+          }
         }
         return;
       }
@@ -354,8 +405,10 @@ export function Canvas() {
       marqueeStart.current = null;
       setMarqueeRect(null);
       if (rect && (rect.w > 2 || rect.h > 2)) {
+        // Bound text isn't independently selectable — marquee-selecting
+        // over a labeled shape should pick up the shape, not its label.
         const hits = Object.values(useBoardStore.getState().elements)
-          .filter((el) => !el.deleted && boundsIntersect(getElementBounds(el), rect))
+          .filter((el) => !el.deleted && !el.containerId && boundsIntersect(getElementBounds(el), rect))
           .map((el) => el.id);
         setSelectedIds(hits);
       } else {
@@ -529,12 +582,19 @@ export function Canvas() {
       const id = node.id();
       const element = useBoardStore.getState().elements[id];
       if (!element) continue;
-      const baked = { ...bakeNodeTransform(element, node), updatedAt: Date.now() };
+      let baked = { ...bakeNodeTransform(element, node), updatedAt: Date.now() };
       node.scaleX(1);
       node.scaleY(1);
       if (baked.type === 'line' || baked.type === 'arrow' || baked.type === 'path') {
         node.position({ x: 0, y: 0 });
         node.rotation(0);
+      }
+      if (isContainerType(baked.type)) {
+        const bound = findBoundText(useBoardStore.getState().elements, baked.id);
+        if (bound) {
+          const needed = requiredContainerHeight(baked, bound.text ?? '', bound.fontSize ?? 20);
+          if (needed > (baked.h ?? 0)) baked = { ...baked, h: needed };
+        }
       }
       commitElement(baked);
       useSyncStore.getState().sendUpsert(baked);
@@ -571,6 +631,18 @@ export function Canvas() {
         .sort((a, b) => (a.z ?? a.updatedAt) - (b.z ?? b.updatedAt)),
     [elements],
   );
+
+  // Bound text renders nested inside its container's own Group (see
+  // ElementRenderer) rather than as its own top-level node — nesting is
+  // what makes it move/rotate with the container for free.
+  const topLevelElements = useMemo(() => elementList.filter((el) => !el.containerId), [elementList]);
+  const boundTextByContainer = useMemo(() => {
+    const map: Record<string, Element> = {};
+    for (const el of elementList) {
+      if (el.containerId) map[el.containerId] = el;
+    }
+    return map;
+  }, [elementList]);
 
   const cursor = isPanMode
     ? 'grab'
@@ -610,7 +682,7 @@ export function Canvas() {
           onContextMenu={handleContextMenu}
         >
           <Layer>
-            {elementList.map((element) => (
+            {topLevelElements.map((element) => (
               <ElementRenderer
                 key={element.id}
                 element={element}
@@ -619,6 +691,8 @@ export function Canvas() {
                 onDragMove={handleShapeDragMove}
                 onDragEnd={handleShapeDragEnd}
                 registerNode={registerNode}
+                boundText={boundTextByContainer[element.id]}
+                editingTextId={editingTextId}
               />
             ))}
             <Transformer

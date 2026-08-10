@@ -5,6 +5,7 @@ import { loadStoredName, storeName, loadOrCreateColorSeed } from '@/lib/identity
 import { config } from '@/lib/config';
 import { shouldApplyRemote } from '@/features/sync/lww';
 import { useSyncStore } from '@/features/sync/useSyncStore';
+import { isContainerType, requiredContainerHeight } from '@/features/canvas/lib/boundText';
 
 export type ElementsMap = Record<string, Element>;
 
@@ -63,7 +64,8 @@ interface BoardState {
    * addition to `setStyle` updating the default for new elements) —
    * without this, the style panel only ever affected shapes you
    * hadn't drawn yet, which read as "I can't recolor anything I
-   * already made." fontSize only applies to text elements.
+   * already made." fontSize/textAlign apply to text elements, and to
+   * a selected container's bound text label if it has one.
    */
   applyStyleToSelection: (style: Partial<Style>) => void;
   addRecentColor: (color: string) => void;
@@ -87,7 +89,15 @@ interface BoardState {
   applyElement: (element: Element) => void;
   /** Snapshot history, then apply — used at the end of a gesture. */
   commitElement: (element: Element) => void;
-  deleteElements: (ids: string[]) => void;
+  /** Snapshot history once, then apply several elements together (e.g. a container plus its bound text). */
+  commitElements: (elements: Element[]) => void;
+  /**
+   * Deletes the given ids, cascading to a container's bound text (its
+   * label doesn't survive as an orphaned, unbound text element). Returns
+   * the full set actually deleted so the caller can broadcast the
+   * cascaded ids too.
+   */
+  deleteElements: (ids: string[]) => string[];
   clearBoard: () => void;
   undo: () => void;
   redo: () => void;
@@ -159,6 +169,28 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         if (patch.opacity !== undefined) updated.opacity = patch.opacity;
         if (patch.textAlign !== undefined && el.type === 'text') updated.textAlign = patch.textAlign;
         next[id] = updated;
+
+        if (isContainerType(el.type)) {
+          const bound = Object.values(s.elements).find((e) => e.containerId === id && !e.deleted);
+          if (bound && (patch.fontSize !== undefined || patch.textAlign !== undefined)) {
+            const updatedText: Element = { ...bound, updatedAt: Date.now() };
+            if (patch.fontSize !== undefined) updatedText.fontSize = patch.fontSize;
+            if (patch.textAlign !== undefined) updatedText.textAlign = patch.textAlign;
+            next[bound.id] = updatedText;
+
+            // A larger font (or a container patch that touches width via
+            // some future control) can need more room than the box
+            // currently has — grow it so the label never overflows.
+            const needed = requiredContainerHeight(
+              updated,
+              updatedText.text ?? '',
+              updatedText.fontSize ?? 20,
+            );
+            if (needed > (updated.h ?? 0)) {
+              next[id] = { ...updated, h: needed };
+            }
+          }
+        }
       }
       return { elements: next };
     });
@@ -171,6 +203,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     const offset = 12;
     const maxZ = Object.values(elements).reduce((m, el) => Math.max(m, el.z ?? el.updatedAt), 0);
     const clones: Element[] = [];
+    const clonedIdByOriginal: Record<string, string> = {};
     set((s) => {
       const next = { ...s.elements };
       for (const id of selectedIds) {
@@ -187,9 +220,30 @@ export const useBoardStore = create<BoardState>((set, get) => ({
           points: el.points?.map((p) => p + offset),
         };
         next[clone.id] = clone;
+        clonedIdByOriginal[id] = clone.id;
         clones.push(clone);
       }
-      return { elements: next, selectedIds: clones.map((c) => c.id) };
+      // A duplicated container should keep its label — bound text isn't
+      // independently selectable, so it never appears in selectedIds and
+      // needs a matching cascade clone here (re-pointed at the new
+      // container's id) or the clone would render as an empty shape.
+      for (const id of selectedIds) {
+        const el = s.elements[id];
+        if (!el || !isContainerType(el.type)) continue;
+        const bound = Object.values(s.elements).find((e) => e.containerId === id && !e.deleted);
+        if (!bound) continue;
+        const now = Date.now();
+        const textClone: Element = {
+          ...bound,
+          id: newElementId(),
+          containerId: clonedIdByOriginal[id],
+          z: maxZ + 1 + clones.length,
+          updatedAt: now,
+        };
+        next[textClone.id] = textClone;
+        clones.push(textClone);
+      }
+      return { elements: next, selectedIds: selectedIds.map((id) => clonedIdByOriginal[id]).filter(Boolean) };
     });
     return clones;
   },
@@ -244,17 +298,36 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     set((s) => ({ elements: { ...s.elements, [element.id]: element } }));
   },
 
-  deleteElements: (ids) => {
-    if (ids.length === 0) return;
+  commitElements: (elements) => {
+    if (elements.length === 0) return;
     get().snapshotHistory();
     set((s) => {
       const next = { ...s.elements };
-      for (const id of ids) delete next[id];
+      for (const el of elements) next[el.id] = el;
+      return { elements: next };
+    });
+  },
+
+  deleteElements: (ids) => {
+    if (ids.length === 0) return [];
+    get().snapshotHistory();
+    const state = get();
+    const expanded = [...ids];
+    for (const id of ids) {
+      const el = state.elements[id];
+      if (!el || !isContainerType(el.type)) continue;
+      const bound = Object.values(state.elements).find((e) => e.containerId === id && !e.deleted);
+      if (bound && !expanded.includes(bound.id)) expanded.push(bound.id);
+    }
+    set((s) => {
+      const next = { ...s.elements };
+      for (const id of expanded) delete next[id];
       return {
         elements: next,
-        selectedIds: s.selectedIds.filter((id) => !ids.includes(id)),
+        selectedIds: s.selectedIds.filter((id) => !expanded.includes(id)),
       };
     });
+    return expanded;
   },
 
   clearBoard: () => {

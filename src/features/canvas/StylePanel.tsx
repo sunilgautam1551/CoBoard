@@ -4,6 +4,7 @@ import { useBoardStore, type Style } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { ElementType, Tool } from '@/types';
 import { ROUGHNESS_PRESETS } from './lib/rough';
+import { findBoundText } from './lib/boundText';
 import {
   duplicateSelectionAndBroadcast,
   deleteSelectionAndBroadcast,
@@ -114,18 +115,21 @@ export function StylePanel() {
     ['pen', 'rect', 'diamond', 'ellipse', 'line', 'arrow', 'text'].includes(tool);
   if (!visible) return null;
 
-  const isText = primaryType === 'text';
+  const boundText = firstSelected ? findBoundText(elements, firstSelected.id) : undefined;
+  const isStandaloneText = primaryType === 'text';
   const isLineArrow = primaryType === 'line' || primaryType === 'arrow';
   const isShape = SHAPE_TYPES.includes(primaryType);
 
   const showBackground = FILL_TYPES.includes(primaryType);
   const activeFill = firstSelected?.fill ?? style.fill;
   const showFillStyle = isShape && activeFill !== 'transparent';
-  const showStrokeWidth = !isText;
+  const showStrokeWidth = !isStandaloneText;
   const showStrokeStyle = isShape || isLineArrow;
   const showSloppiness = isShape || isLineArrow;
   const showEdges = primaryType === 'rect' || primaryType === 'diamond';
-  const showTextControls = isText;
+  // A selected container with a bound label also gets font-size/align
+  // controls for that label, on top of its own shape-styling sections.
+  const showTextControls = isStandaloneText || !!boundText;
   const showOpacity = true;
   const showLayers = selectedIds.length > 0;
   const showActions = selectedIds.length > 0;
@@ -137,12 +141,15 @@ export function StylePanel() {
   const activeFillStyle = firstSelected?.fillStyle ?? style.fillStyle;
   const activeEdges = firstSelected?.edges ?? style.edges;
   const activeOpacity = firstSelected?.opacity ?? style.opacity;
-  const activeTextAlign = firstSelected?.textAlign ?? style.textAlign;
-  const activeFontSize = firstSelected?.fontSize ?? style.fontSize;
+  const activeTextAlign = boundText?.textAlign ?? firstSelected?.textAlign ?? style.textAlign;
+  const activeFontSize = boundText?.fontSize ?? firstSelected?.fontSize ?? style.fontSize;
 
   // Updates the default style for new elements AND, if something is
   // already selected, restyles it live and broadcasts the change —
   // otherwise the panel would only ever affect shapes not drawn yet.
+  // Also syncs a selected container's bound text label (font size/align
+  // live on the label, not the container, but there's no separate way
+  // to select the label directly).
   function applyAndBroadcast(patch: Partial<Style>) {
     setStyle(patch);
     const ids = useBoardStore.getState().selectedIds;
@@ -152,6 +159,8 @@ export function StylePanel() {
     for (const id of ids) {
       const el = updated[id];
       if (el) useSyncStore.getState().sendUpsert(el);
+      const bound = findBoundText(updated, id);
+      if (bound) useSyncStore.getState().sendUpsert(bound);
     }
   }
 

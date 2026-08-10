@@ -6,6 +6,8 @@ import type { Element } from '@/types';
 import { pointsToSvgPath } from './lib/freehand';
 import { roughRect, roughDiamond, roughEllipse, roughLine, seedFromId, type RoughPath } from './lib/rough';
 import { arrowHeadPoints } from './lib/arrowhead';
+import { TEXT_FONT_FAMILY } from './lib/text';
+import { getBoundTextLocalBox } from './lib/boundText';
 
 type Props = {
   element: Element;
@@ -14,7 +16,41 @@ type Props = {
   onDragMove: (id: string, node: Konva.Node) => void;
   onDragEnd: (id: string, node: Konva.Node) => void;
   registerNode: (id: string, node: Konva.Node | null) => void;
+  /** The text label bound to this element, if it's a container with one. */
+  boundText?: Element;
+  /** Suppresses rendering of whichever text (standalone or bound) is currently being edited — the textarea overlay is the visual for it instead. */
+  editingTextId?: string | null;
 };
+
+/**
+ * A container's bound text is rendered as a plain, non-interactive child
+ * of its Group — nesting it means it automatically moves/rotates with
+ * the container (Konva applies the parent transform to children for
+ * free), and `listening={false}` means clicks/taps on the glyphs fall
+ * through to the container's own hit target beneath, matching
+ * Excalidraw where you can't select a label independently of its box.
+ */
+function BoundTextGlyphs({ container, text }: { container: Element; text: Element }) {
+  const box = useMemo(
+    () => getBoundTextLocalBox(container, text.text ?? '', text.fontSize ?? 20),
+    [container, text.text, text.fontSize],
+  );
+  return (
+    <Text
+      listening={false}
+      x={box.x}
+      y={box.y}
+      width={box.width}
+      text={text.text ?? ''}
+      fontSize={text.fontSize ?? 20}
+      fontFamily={TEXT_FONT_FAMILY}
+      fill={text.stroke}
+      align={text.textAlign ?? 'center'}
+      wrap="word"
+      opacity={(text.opacity ?? 100) / 100}
+    />
+  );
+}
 
 // Selection feedback comes entirely from the Transformer's own outline
 // and handles (or the endpoint circles for line/arrow) — matching
@@ -26,6 +62,8 @@ export function ElementRenderer({
   onDragMove,
   onDragEnd,
   registerNode,
+  boundText,
+  editingTextId,
 }: Props) {
   const common = {
     id: element.id,
@@ -84,6 +122,8 @@ export function ElementRenderer({
     edges,
   ]);
 
+  const showBoundText = boundText && boundText.id !== editingTextId;
+
   switch (element.type) {
     case 'rect':
       return (
@@ -105,6 +145,7 @@ export function ElementRenderer({
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
             />
           ))}
+          {showBoundText && <BoundTextGlyphs container={element} text={boundText} />}
         </Group>
       );
     case 'diamond':
@@ -129,6 +170,7 @@ export function ElementRenderer({
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
             />
           ))}
+          {showBoundText && <BoundTextGlyphs container={element} text={boundText} />}
         </Group>
       );
     case 'ellipse':
@@ -153,6 +195,7 @@ export function ElementRenderer({
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
             />
           ))}
+          {showBoundText && <BoundTextGlyphs container={element} text={boundText} />}
         </Group>
       );
     case 'line':
@@ -194,7 +237,8 @@ export function ElementRenderer({
           fill={element.stroke}
         />
       );
-    case 'text':
+    case 'text': {
+      if (element.id === editingTextId) return null;
       return (
         <Text
           {...common}
@@ -202,12 +246,13 @@ export function ElementRenderer({
           y={element.y ?? 0}
           text={element.text ?? ''}
           fontSize={element.fontSize ?? 20}
-          fontFamily="var(--font-geist-sans), sans-serif"
+          fontFamily={TEXT_FONT_FAMILY}
           fill={element.stroke}
           width={element.w}
           align={element.textAlign ?? 'left'}
         />
       );
+    }
     default:
       return null;
   }

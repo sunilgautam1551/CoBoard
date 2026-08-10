@@ -39,6 +39,7 @@ export type Element = {
   opacity?: number; // 0–100
   textAlign?: TextAlign; // text only
   z?: number; // render/layer order — higher draws on top; falls back to updatedAt when unset
+  containerId?: string; // text only — id of the rect/diamond/ellipse this label is bound to
   updatedAt: number; // ms epoch, Lamport-ish clock
   updatedBy: string; // clientId
   deleted?: boolean;

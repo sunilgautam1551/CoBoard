@@ -41,7 +41,7 @@ export function LineEndpointHandles({ element, scale }: { element: Element; scal
   const handleProps = {
     radius,
     fill: 'white',
-    stroke: '#4f46e5',
+    stroke: '#7c3aed',
     strokeWidth,
     draggable: true,
     hitStrokeWidth: radius * 3,

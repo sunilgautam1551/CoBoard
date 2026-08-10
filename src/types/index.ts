@@ -13,6 +13,11 @@ export type ElementType =
   | 'arrow'
   | 'text';
 
+export type StrokeStyle = 'solid' | 'dashed' | 'dotted';
+export type Edges = 'sharp' | 'round';
+export type FillStyle = 'hachure' | 'cross-hatch' | 'solid';
+export type TextAlign = 'left' | 'center' | 'right';
+
 export type Element = {
   id: string;
   type: ElementType;
@@ -27,6 +32,13 @@ export type Element = {
   stroke: string;
   fill: string;
   strokeWidth: number;
+  roughness?: number; // "sloppiness" — 0.5 architect, 1.4 artist, 2.5 cartoonist
+  strokeStyle?: StrokeStyle;
+  fillStyle?: FillStyle;
+  edges?: Edges; // rect/diamond only
+  opacity?: number; // 0–100
+  textAlign?: TextAlign; // text only
+  z?: number; // render/layer order — higher draws on top; falls back to updatedAt when unset
   updatedAt: number; // ms epoch, Lamport-ish clock
   updatedBy: string; // clientId
   deleted?: boolean;

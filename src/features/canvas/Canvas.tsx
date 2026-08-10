@@ -15,6 +15,12 @@ import { getElementBounds, boundsIntersect } from './lib/bounds';
 import { TextEditor } from './TextEditor';
 import { LineEndpointHandles } from './LineEndpointHandles';
 import { RemoteCursors } from '@/features/presence/RemoteCursors';
+import { ContextMenu } from './ContextMenu';
+import {
+  duplicateSelectionAndBroadcast,
+  deleteSelectionAndBroadcast,
+  reorderSelectionAndBroadcast,
+} from './lib/elementActions';
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'diamond', 'ellipse', 'line', 'arrow'];
 
@@ -26,6 +32,7 @@ export function Canvas() {
 
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const elements = useBoardStore((s) => s.elements);
   const selectedIds = useBoardStore((s) => s.selectedIds);
@@ -120,12 +127,18 @@ export function Canvas() {
   const startShapeDraw = useCallback(
     (type: ElementType, world: { x: number; y: number }) => {
       const id = newElementId();
+      const now = Date.now();
       const base = {
         id,
         stroke: style.stroke,
         fill: style.fill,
         strokeWidth: style.strokeWidth,
-        updatedAt: Date.now(),
+        roughness: style.roughness,
+        strokeStyle: style.strokeStyle,
+        edges: style.edges,
+        opacity: style.opacity,
+        z: now,
+        updatedAt: now,
         updatedBy: useBoardStore.getState().clientId,
       };
       let element: Element;
@@ -145,6 +158,7 @@ export function Canvas() {
   const createTextAt = useCallback(
     (world: { x: number; y: number }) => {
       const id = newElementId();
+      const now = Date.now();
       const element: Element = {
         id,
         type: 'text',
@@ -155,7 +169,10 @@ export function Canvas() {
         stroke: style.stroke,
         fill: style.fill,
         strokeWidth: style.strokeWidth,
-        updatedAt: Date.now(),
+        opacity: style.opacity,
+        textAlign: style.textAlign,
+        z: now,
+        updatedAt: now,
         updatedBy: useBoardStore.getState().clientId,
       };
       commitElement(element);
@@ -166,8 +183,29 @@ export function Canvas() {
     [style, commitElement, setSelectedIds, setTool],
   );
 
+  const handleContextMenu = useCallback(
+    (e: KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      const stage = stageRef.current;
+      const container = containerRef.current;
+      if (!stage || !container) return;
+      const target = e.target;
+      const id = target !== stage ? target.id() : '';
+      if (!id) {
+        setContextMenu(null);
+        return;
+      }
+      const current = useBoardStore.getState().selectedIds;
+      if (!current.includes(id)) setSelectedIds([id]);
+      const rect = container.getBoundingClientRect();
+      setContextMenu({ x: e.evt.clientX - rect.left, y: e.evt.clientY - rect.top });
+    },
+    [setSelectedIds],
+  );
+
   const handlePointerDown = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
+      setContextMenu(null);
       const stage = stageRef.current;
       if (!stage) return;
       const isMiddle = e.evt.button === 1;
@@ -503,26 +541,36 @@ export function Canvas() {
     }
   }, [commitElement]);
 
-  // Keyboard: delete selection.
+  // Keyboard: delete selection, Ctrl/Cmd+D to duplicate.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
-        const updatedAt = Date.now();
-        const clientId = useBoardStore.getState().clientId;
-        deleteElements(selectedIds);
-        for (const id of selectedIds) {
-          useSyncStore.getState().sendDelete(id, updatedAt, clientId);
-        }
+        deleteSelectionAndBroadcast(selectedIds);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && selectedIds.length > 0) {
+        e.preventDefault();
+        duplicateSelectionAndBroadcast();
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedIds, deleteElements]);
+  }, [selectedIds]);
 
-  const elementList = useMemo(() => Object.values(elements).filter((el) => !el.deleted), [elements]);
+  const elementList = useMemo(
+    () =>
+      Object.values(elements)
+        .filter((el) => !el.deleted)
+        .sort((a, b) => (a.z ?? a.updatedAt) - (b.z ?? b.updatedAt)),
+    [elements],
+  );
 
   const cursor = isPanMode
     ? 'grab'
@@ -559,13 +607,13 @@ export function Canvas() {
           onWheel={handleWheel}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onContextMenu={handleContextMenu}
         >
           <Layer>
             {elementList.map((element) => (
               <ElementRenderer
                 key={element.id}
                 element={element}
-                isSelected={selectedIds.includes(element.id)}
                 selectable={tool === 'select'}
                 onSelect={handleSelect}
                 onDragMove={handleShapeDragMove}
@@ -579,6 +627,14 @@ export function Canvas() {
               onTransformEnd={handleTransformEnd}
               rotateEnabled
               flipEnabled={false}
+              borderStroke="#7c3aed"
+              borderStrokeWidth={1.5}
+              borderDash={[4, 4]}
+              anchorStroke="#7c3aed"
+              anchorFill="#ffffff"
+              anchorSize={8}
+              anchorCornerRadius={4}
+              rotateAnchorOffset={24}
               boundBoxFunc={(oldBox, newBox) =>
                 Math.abs(newBox.width) < 4 || Math.abs(newBox.height) < 4 ? oldBox : newBox
               }
@@ -607,6 +663,17 @@ export function Canvas() {
           elementId={editingTextId}
           stage={stageRef.current}
           onDone={() => setEditingTextId(null)}
+        />
+      )}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onDuplicate={duplicateSelectionAndBroadcast}
+          onDelete={() => deleteSelectionAndBroadcast(useBoardStore.getState().selectedIds)}
+          onBringToFront={() => reorderSelectionAndBroadcast('front')}
+          onSendToBack={() => reorderSelectionAndBroadcast('back')}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

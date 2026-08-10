@@ -9,7 +9,6 @@ import { arrowHeadPoints } from './lib/arrowhead';
 
 type Props = {
   element: Element;
-  isSelected: boolean;
   selectable: boolean;
   onSelect: (id: string, e: KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onDragMove: (id: string, node: Konva.Node) => void;
@@ -17,9 +16,11 @@ type Props = {
   registerNode: (id: string, node: Konva.Node | null) => void;
 };
 
+// Selection feedback comes entirely from the Transformer's own outline
+// and handles (or the endpoint circles for line/arrow) — matching
+// Excalidraw, which doesn't glow the shape itself on selection.
 export function ElementRenderer({
   element,
-  isSelected,
   selectable,
   onSelect,
   onDragMove,
@@ -35,45 +36,53 @@ export function ElementRenderer({
     onDragEnd: (e: KonvaEventObject<DragEvent>) => onDragEnd(element.id, e.target),
     ref: (node: Konva.Node | null) => registerNode(element.id, node),
     perfectDrawEnabled: false,
-  };
-
-  const shadow = {
-    shadowColor: isSelected ? '#4f46e5' : undefined,
-    shadowBlur: isSelected ? 10 : 0,
-    shadowOpacity: isSelected ? 0.45 : 0,
+    opacity: (element.opacity ?? 100) / 100,
   };
 
   const seed = useMemo(() => seedFromId(element.id), [element.id]);
   const w = element.w ?? 0;
   const h = element.h ?? 0;
   const [x1, y1, x2, y2] = element.points ?? [0, 0, 0, 0];
+  const roughness = element.roughness ?? 1.4;
+  const strokeStyle = element.strokeStyle ?? 'solid';
+  const fillStyle = element.fillStyle ?? 'solid';
+  const edges = element.edges ?? 'round';
 
   // Called unconditionally (rules-of-hooks) — branches internally so every
   // element instance still only pays for the shape it actually is.
   const roughPaths: RoughPath[] = useMemo(() => {
+    const style = { stroke: element.stroke, roughness, strokeStyle, fillStyle };
+    const fill = element.fill === 'transparent' ? undefined : element.fill;
     if (element.type === 'rect') {
-      return roughRect(w, h, seed, element.strokeWidth, {
-        stroke: element.stroke,
-        fill: element.fill === 'transparent' ? undefined : element.fill,
-      });
+      return roughRect(w, h, seed, element.strokeWidth, edges, { ...style, fill });
     }
     if (element.type === 'diamond') {
-      return roughDiamond(w, h, seed, element.strokeWidth, {
-        stroke: element.stroke,
-        fill: element.fill === 'transparent' ? undefined : element.fill,
-      });
+      return roughDiamond(w, h, seed, element.strokeWidth, edges, { ...style, fill });
     }
     if (element.type === 'ellipse') {
-      return roughEllipse(w, h, seed, element.strokeWidth, {
-        stroke: element.stroke,
-        fill: element.fill === 'transparent' ? undefined : element.fill,
-      });
+      return roughEllipse(w, h, seed, element.strokeWidth, { ...style, fill });
     }
     if (element.type === 'line' || element.type === 'arrow') {
-      return roughLine(x1, y1, x2, y2, seed, element.strokeWidth);
+      return roughLine(x1, y1, x2, y2, seed, element.strokeWidth, style);
     }
     return [];
-  }, [element.type, w, h, x1, y1, x2, y2, seed, element.strokeWidth, element.stroke, element.fill]);
+  }, [
+    element.type,
+    w,
+    h,
+    x1,
+    y1,
+    x2,
+    y2,
+    seed,
+    element.strokeWidth,
+    element.stroke,
+    element.fill,
+    roughness,
+    strokeStyle,
+    fillStyle,
+    edges,
+  ]);
 
   switch (element.type) {
     case 'rect':
@@ -94,7 +103,6 @@ export function ElementRenderer({
               lineCap="round"
               lineJoin="round"
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
-              {...shadow}
             />
           ))}
         </Group>
@@ -119,7 +127,6 @@ export function ElementRenderer({
               lineCap="round"
               lineJoin="round"
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
-              {...shadow}
             />
           ))}
         </Group>
@@ -144,7 +151,6 @@ export function ElementRenderer({
               lineCap="round"
               lineJoin="round"
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
-              {...shadow}
             />
           ))}
         </Group>
@@ -164,7 +170,6 @@ export function ElementRenderer({
               lineCap="round"
               lineJoin="round"
               hitStrokeWidth={Math.max(16, element.strokeWidth)}
-              {...shadow}
             />
           ))}
           {element.type === 'arrow' && (
@@ -176,7 +181,6 @@ export function ElementRenderer({
               stroke={element.stroke}
               strokeWidth={element.strokeWidth}
               lineJoin="round"
-              {...shadow}
             />
           )}
         </Group>
@@ -188,7 +192,6 @@ export function ElementRenderer({
           {...common}
           data={pointsToSvgPath(element.points ?? [], element.strokeWidth)}
           fill={element.stroke}
-          {...shadow}
         />
       );
     case 'text':
@@ -202,7 +205,7 @@ export function ElementRenderer({
           fontFamily="var(--font-geist-sans), sans-serif"
           fill={element.stroke}
           width={element.w}
-          {...shadow}
+          align={element.textAlign ?? 'left'}
         />
       );
     default:

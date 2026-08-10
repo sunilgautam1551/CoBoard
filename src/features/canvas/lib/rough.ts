@@ -1,9 +1,18 @@
 import rough from 'roughjs/bin/rough';
 import type { Drawable, Options, OpSet } from 'roughjs/bin/core';
+import type { StrokeStyle, Edges, FillStyle } from '@/types';
 
 const generator = rough.generator();
 
 export type RoughPath = { d: string; fill: boolean };
+
+export type ShapeStyle = {
+  stroke: string;
+  fill?: string;
+  roughness: number;
+  strokeStyle: StrokeStyle;
+  fillStyle?: FillStyle;
+};
 
 function opSetToSvgPath(opSet: OpSet): string {
   const parts: string[] = [];
@@ -34,28 +43,88 @@ export function seedFromId(id: string): number {
   return Math.abs(hash) % 2 ** 31 || 1;
 }
 
-// Excalidraw's default fill style is 'solid', not 'hachure' — hachure is
-// an option you opt into, not the default. Using it unconditionally read
-// as "not filling completely" (a few diagonal lines instead of a filled
-// shape), which is exactly the reported complaint.
-const baseOptions = (seed: number, strokeWidth: number): Options => ({
-  seed,
-  roughness: 1.4,
-  strokeWidth,
-  fillStyle: 'solid',
-  curveFitting: 0.98,
-});
+// Matches Excalidraw's own three named "Sloppiness" presets.
+export const ROUGHNESS_PRESETS = { architect: 0.5, artist: 1.4, cartoonist: 2.8 } as const;
+
+const STROKE_DASH: Record<StrokeStyle, number[] | undefined> = {
+  solid: undefined,
+  dashed: [8, 6],
+  dotted: [2, 6],
+};
+
+function toRoughOptions(seed: number, strokeWidth: number, style: ShapeStyle): Options {
+  return {
+    seed,
+    strokeWidth,
+    roughness: style.roughness,
+    stroke: style.stroke,
+    fill: style.fill,
+    // Defaults to 'solid' (Excalidraw's own default) rather than
+    // 'hachure' — hachure is an opt-in choice, not the default; using it
+    // unconditionally previously read as "not filling completely".
+    fillStyle: style.fillStyle ?? 'solid',
+    strokeLineDash: STROKE_DASH[style.strokeStyle],
+    curveFitting: 0.98,
+  };
+}
+
+function roundedRectPath(w: number, h: number, radius: number): string {
+  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+  if (r === 0) return `M0,0 L${w},0 L${w},${h} L0,${h} Z`;
+  return [
+    `M${r},0`,
+    `L${w - r},0`,
+    `A${r},${r} 0 0 1 ${w},${r}`,
+    `L${w},${h - r}`,
+    `A${r},${r} 0 0 1 ${w - r},${h}`,
+    `L${r},${h}`,
+    `A${r},${r} 0 0 1 0,${h - r}`,
+    `L0,${r}`,
+    `A${r},${r} 0 0 1 ${r},0`,
+    'Z',
+  ].join(' ');
+}
+
+function roundedPolygonPath(points: [number, number][], radius: number): string {
+  const n = points.length;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const curr = points[i];
+    const prev = points[(i - 1 + n) % n];
+    const next = points[(i + 1) % n];
+
+    const toPrev = [prev[0] - curr[0], prev[1] - curr[1]];
+    const toNext = [next[0] - curr[0], next[1] - curr[1]];
+    const lenPrev = Math.hypot(toPrev[0], toPrev[1]) || 1;
+    const lenNext = Math.hypot(toNext[0], toNext[1]) || 1;
+    const r = Math.min(radius, lenPrev / 2, lenNext / 2);
+
+    const p1: [number, number] = [curr[0] + (toPrev[0] / lenPrev) * r, curr[1] + (toPrev[1] / lenPrev) * r];
+    const p2: [number, number] = [curr[0] + (toNext[0] / lenNext) * r, curr[1] + (toNext[1] / lenNext) * r];
+
+    parts.push(i === 0 ? `M${p1[0]},${p1[1]}` : `L${p1[0]},${p1[1]}`);
+    parts.push(`Q${curr[0]},${curr[1]} ${p2[0]},${p2[1]}`);
+  }
+  parts.push('Z');
+  return parts.join(' ');
+}
+
+const cornerRadius = (w: number, h: number) => Math.min(Math.min(Math.abs(w), Math.abs(h)) * 0.25, 24);
 
 export function roughRect(
   w: number,
   h: number,
   seed: number,
   strokeWidth: number,
-  options: Partial<Options>,
+  edges: Edges,
+  style: ShapeStyle,
 ): RoughPath[] {
-  return drawableToPaths(
-    generator.rectangle(0, 0, w, h, { ...baseOptions(seed, strokeWidth), ...options }),
-  );
+  const opts = toRoughOptions(seed, strokeWidth, style);
+  const drawable =
+    edges === 'round'
+      ? generator.path(roundedRectPath(w, h, cornerRadius(w, h)), opts)
+      : generator.rectangle(0, 0, w, h, opts);
+  return drawableToPaths(drawable);
 }
 
 /** Centered at local (0,0) — caller positions the group at the shape's center. */
@@ -64,11 +133,9 @@ export function roughEllipse(
   h: number,
   seed: number,
   strokeWidth: number,
-  options: Partial<Options>,
+  style: ShapeStyle,
 ): RoughPath[] {
-  return drawableToPaths(
-    generator.ellipse(0, 0, w, h, { ...baseOptions(seed, strokeWidth), ...options }),
-  );
+  return drawableToPaths(generator.ellipse(0, 0, w, h, toRoughOptions(seed, strokeWidth, style)));
 }
 
 /** Diamond connecting the midpoints of a w×h bounding box's edges. */
@@ -77,7 +144,8 @@ export function roughDiamond(
   h: number,
   seed: number,
   strokeWidth: number,
-  options: Partial<Options>,
+  edges: Edges,
+  style: ShapeStyle,
 ): RoughPath[] {
   const points: [number, number][] = [
     [w / 2, 0],
@@ -85,9 +153,12 @@ export function roughDiamond(
     [w / 2, h],
     [0, h / 2],
   ];
-  return drawableToPaths(
-    generator.polygon(points, { ...baseOptions(seed, strokeWidth), ...options }),
-  );
+  const opts = toRoughOptions(seed, strokeWidth, style);
+  const drawable =
+    edges === 'round'
+      ? generator.path(roundedPolygonPath(points, cornerRadius(w, h)), opts)
+      : generator.polygon(points, opts);
+  return drawableToPaths(drawable);
 }
 
 export function roughLine(
@@ -97,6 +168,9 @@ export function roughLine(
   y2: number,
   seed: number,
   strokeWidth: number,
+  style: Pick<ShapeStyle, 'stroke' | 'roughness' | 'strokeStyle'>,
 ): RoughPath[] {
-  return drawableToPaths(generator.line(x1, y1, x2, y2, baseOptions(seed, strokeWidth)));
+  return drawableToPaths(
+    generator.line(x1, y1, x2, y2, toRoughOptions(seed, strokeWidth, style)),
+  );
 }

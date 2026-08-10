@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { Element, Tool } from '@/types';
-import { newClientId, randomName, colorFromId } from '@/lib/utils';
+import type { Element, Tool, StrokeStyle, Edges, FillStyle, TextAlign } from '@/types';
+import { newClientId, randomName, colorFromId, newElementId } from '@/lib/utils';
 import { loadStoredName, storeName, loadOrCreateColorSeed } from '@/lib/identity';
 import { config } from '@/lib/config';
 import { shouldApplyRemote } from '@/features/sync/lww';
@@ -8,7 +8,18 @@ import { useSyncStore } from '@/features/sync/useSyncStore';
 
 export type ElementsMap = Record<string, Element>;
 
-export type Style = { stroke: string; fill: string; strokeWidth: number; fontSize: number };
+export type Style = {
+  stroke: string;
+  fill: string;
+  strokeWidth: number;
+  fontSize: number;
+  roughness: number;
+  strokeStyle: StrokeStyle;
+  fillStyle: FillStyle;
+  edges: Edges;
+  opacity: number;
+  textAlign: TextAlign;
+};
 
 export type Viewport = { x: number; y: number; scale: number };
 
@@ -17,6 +28,12 @@ const DEFAULT_STYLE: Style = {
   fill: 'transparent',
   strokeWidth: 3,
   fontSize: 20,
+  roughness: 1.4,
+  strokeStyle: 'solid',
+  fillStyle: 'solid',
+  edges: 'round',
+  opacity: 100,
+  textAlign: 'left',
 };
 
 interface BoardState {
@@ -52,6 +69,17 @@ interface BoardState {
   addRecentColor: (color: string) => void;
   setViewport: (viewport: Partial<Viewport>) => void;
   setSelectedIds: (ids: string[]) => void;
+
+  /** Clones the selection with a small offset and selects the copies. Returns the new elements to broadcast. */
+  duplicateSelection: () => Element[];
+  /**
+   * Moves selected elements to the front/back of the shared z-order and
+   * bumps their updatedAt so the change wins LWW on every client. Returns
+   * the changed elements to broadcast — a purely local key-order shuffle
+   * wouldn't propagate, since each client rebuilds its own `elements` map
+   * from its own arrival order of upserts.
+   */
+  reorderSelection: (direction: 'front' | 'back') => Element[];
 
   /** Push the current elements onto the undo stack and clear redo. */
   snapshotHistory: () => void;
@@ -124,10 +152,70 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         if (patch.fill !== undefined) updated.fill = patch.fill;
         if (patch.strokeWidth !== undefined) updated.strokeWidth = patch.strokeWidth;
         if (patch.fontSize !== undefined && el.type === 'text') updated.fontSize = patch.fontSize;
+        if (patch.roughness !== undefined) updated.roughness = patch.roughness;
+        if (patch.strokeStyle !== undefined) updated.strokeStyle = patch.strokeStyle;
+        if (patch.fillStyle !== undefined) updated.fillStyle = patch.fillStyle;
+        if (patch.edges !== undefined) updated.edges = patch.edges;
+        if (patch.opacity !== undefined) updated.opacity = patch.opacity;
+        if (patch.textAlign !== undefined && el.type === 'text') updated.textAlign = patch.textAlign;
         next[id] = updated;
       }
       return { elements: next };
     });
+  },
+
+  duplicateSelection: () => {
+    const { selectedIds, elements } = get();
+    if (selectedIds.length === 0) return [];
+    get().snapshotHistory();
+    const offset = 12;
+    const maxZ = Object.values(elements).reduce((m, el) => Math.max(m, el.z ?? el.updatedAt), 0);
+    const clones: Element[] = [];
+    set((s) => {
+      const next = { ...s.elements };
+      for (const id of selectedIds) {
+        const el = s.elements[id];
+        if (!el) continue;
+        const now = Date.now();
+        const clone: Element = {
+          ...el,
+          id: newElementId(),
+          z: maxZ + 1 + clones.length,
+          updatedAt: now,
+          x: el.x !== undefined ? el.x + offset : el.x,
+          y: el.y !== undefined ? el.y + offset : el.y,
+          points: el.points?.map((p) => p + offset),
+        };
+        next[clone.id] = clone;
+        clones.push(clone);
+      }
+      return { elements: next, selectedIds: clones.map((c) => c.id) };
+    });
+    return clones;
+  },
+
+  reorderSelection: (direction) => {
+    const { selectedIds, elements } = get();
+    if (selectedIds.length === 0) return [];
+    get().snapshotHistory();
+    const all = Object.values(elements);
+    const zOf = (el: Element) => el.z ?? el.updatedAt;
+    const selected = selectedIds.map((id) => elements[id]).filter((el): el is Element => Boolean(el));
+    const updatedAt = Date.now();
+    let changed: Element[];
+    if (direction === 'front') {
+      const maxZ = all.reduce((m, el) => Math.max(m, zOf(el)), 0);
+      changed = selected.map((el, i) => ({ ...el, z: maxZ + 1 + i, updatedAt }));
+    } else {
+      const minZ = all.reduce((m, el) => Math.min(m, zOf(el)), 0);
+      changed = selected.map((el, i) => ({ ...el, z: minZ - selected.length + i, updatedAt }));
+    }
+    set((s) => {
+      const next = { ...s.elements };
+      for (const el of changed) next[el.id] = el;
+      return { elements: next };
+    });
+    return changed;
   },
 
   addRecentColor: (color) =>

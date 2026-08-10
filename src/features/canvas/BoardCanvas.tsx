@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBoardStore } from '@/store/useBoardStore';
 import type { Element } from '@/types';
 import { useSnapshotPersistence } from '@/features/board/hooks/useSnapshotPersistence';
@@ -8,12 +8,16 @@ import { useRealtimeSync } from '@/features/sync/useRealtimeSync';
 import { Toolbar } from './Toolbar';
 import { Canvas } from './Canvas';
 import { ZoomIndicator } from './ZoomIndicator';
+import { ShortcutsOverlay } from './ShortcutsOverlay';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 type Props = { boardId: string; initialElements: Element[] };
 
 export function BoardCanvas({ boardId, initialElements }: Props) {
-  useKeyboardShortcuts();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const toggleShortcuts = useCallback(() => setShortcutsOpen((v) => !v), []);
+  useKeyboardShortcuts(toggleShortcuts);
+
   const setBoardId = useBoardStore((s) => s.setBoardId);
   const loadSnapshot = useBoardStore((s) => s.loadSnapshot);
   const loadedBoardIdRef = useRef<string | null>(null);
@@ -31,11 +35,14 @@ export function BoardCanvas({ boardId, initialElements }: Props) {
 
   return (
     <div className="flex h-dvh w-full flex-col">
-      <Toolbar />
-      <div className="relative flex-1">
+      <header>
+        <Toolbar onOpenShortcuts={() => setShortcutsOpen(true)} />
+      </header>
+      <main className="relative flex-1">
         <Canvas />
         <ZoomIndicator />
-      </div>
+      </main>
+      <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

@@ -7,7 +7,8 @@ const AUTO_DISMISS_MS = 4000;
 
 const TYPE_STYLES: Record<string, string> = {
   info: 'bg-neutral-900 text-white',
-  success: 'bg-emerald-600 text-white',
+  // emerald-600 fails WCAG AA (3.77:1) for white text at this size; -700 clears 4.5:1.
+  success: 'bg-emerald-700 text-white',
   error: 'bg-red-600 text-white',
 };
 

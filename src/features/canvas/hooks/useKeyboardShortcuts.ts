@@ -13,7 +13,7 @@ const SHORTCUT_TOOLS: Record<string, Tool> = {
   e: 'eraser',
 };
 
-export function useKeyboardShortcuts() {
+export function useKeyboardShortcuts(onToggleShortcuts?: () => void) {
   const setTool = useBoardStore((s) => s.setTool);
   const undo = useBoardStore((s) => s.undo);
   const redo = useBoardStore((s) => s.redo);
@@ -22,6 +22,12 @@ export function useKeyboardShortcuts() {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+
+      if (e.key === '?') {
+        e.preventDefault();
+        onToggleShortcuts?.();
+        return;
+      }
 
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z') {
@@ -43,5 +49,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setTool, undo, redo]);
+  }, [setTool, undo, redo, onToggleShortcuts]);
 }

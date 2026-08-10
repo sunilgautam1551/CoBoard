@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { useBoardStore } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Tool } from '@/types';
@@ -19,7 +20,9 @@ const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
 
 const SWATCHES = ['#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#f08c00'];
 
-export function Toolbar() {
+type Props = { onOpenShortcuts: () => void };
+
+export function Toolbar({ onOpenShortcuts }: Props) {
   const tool = useBoardStore((s) => s.tool);
   const setTool = useBoardStore((s) => s.setTool);
   const style = useBoardStore((s) => s.style);
@@ -31,6 +34,8 @@ export function Toolbar() {
   const clearBoard = useBoardStore((s) => s.clearBoard);
   const canUndo = useBoardStore((s) => s.past.length > 0);
   const canRedo = useBoardStore((s) => s.future.length > 0);
+
+  const toolButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   function handleStrokeChange(color: string) {
     setStyle({ stroke: color });
@@ -49,22 +54,47 @@ export function Toolbar() {
     }
   }
 
+  // Roving tabindex (WAI-ARIA toolbar pattern): only the active tool is
+  // tab-stoppable; arrow keys move focus between the others.
+  function handleToolsKeyDown(e: React.KeyboardEvent) {
+    const currentIndex = TOOLS.findIndex((t) => t.tool === tool);
+    let nextIndex: number | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      nextIndex = (currentIndex + 1) % TOOLS.length;
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      nextIndex = (currentIndex - 1 + TOOLS.length) % TOOLS.length;
+    }
+    if (nextIndex !== null) {
+      e.preventDefault();
+      toolButtonRefs.current[nextIndex]?.focus();
+    }
+  }
+
   return (
     <div
       role="toolbar"
       aria-label="Drawing tools"
       className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2 shadow-sm"
     >
-      <div className="flex items-center gap-1" role="group" aria-label="Tools">
-        {TOOLS.map(({ tool: t, label, shortcut, icon }) => (
+      <div
+        className="flex items-center gap-1"
+        role="group"
+        aria-label="Tools"
+        onKeyDown={handleToolsKeyDown}
+      >
+        {TOOLS.map(({ tool: t, label, shortcut, icon }, index) => (
           <button
             key={t}
+            ref={(el) => {
+              toolButtonRefs.current[index] = el;
+            }}
             type="button"
             onClick={() => setTool(t)}
             aria-label={`${label} (${shortcut})`}
             aria-pressed={tool === t}
             title={`${label} (${shortcut})`}
-            className={`flex h-9 w-9 items-center justify-center rounded-md text-base transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 ${
+            tabIndex={tool === t ? 0 : -1}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base transition motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 ${
               tool === t
                 ? 'bg-neutral-900 text-white'
                 : 'text-neutral-700 hover:bg-neutral-100'
@@ -75,9 +105,9 @@ export function Toolbar() {
         ))}
       </div>
 
-      <div className="mx-1 h-6 w-px bg-neutral-200" aria-hidden="true" />
+      <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
 
-      <div className="flex items-center gap-2" role="group" aria-label="Style">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Style">
         <label className="flex items-center gap-1 text-xs text-neutral-600">
           Stroke
           <input
@@ -126,15 +156,15 @@ export function Toolbar() {
               onClick={() => handleStrokeChange(c)}
               aria-label={`Use color ${c}`}
               style={{ backgroundColor: c }}
-              className="h-5 w-5 rounded-full border border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900"
+              className="h-5 w-5 shrink-0 rounded-full border border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900"
             />
           ))}
         </div>
       </div>
 
-      <div className="mx-1 h-6 w-px bg-neutral-200" aria-hidden="true" />
+      <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
 
-      <div className="flex items-center gap-1" role="group" aria-label="History">
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="History">
         <button
           type="button"
           onClick={undo}
@@ -157,9 +187,18 @@ export function Toolbar() {
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex flex-wrap items-center gap-3">
         <AvatarStack />
         <ShareButton />
+        <button
+          type="button"
+          onClick={onOpenShortcuts}
+          aria-label="Keyboard shortcuts (?)"
+          title="Keyboard shortcuts (?)"
+          className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+        >
+          ?
+        </button>
         <button
           type="button"
           onClick={handleClear}

@@ -12,15 +12,26 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/*
+ * v1 ships a single light theme by design (not in scope — see PRD
+ * non-goals). Deliberately no prefers-color-scheme: dark override:
+ * every component here uses explicit light-theme Tailwind classes
+ * (bg-white, text-neutral-900, ...), so flipping just the body
+ * background would leave dark text on a dark background.
+ */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

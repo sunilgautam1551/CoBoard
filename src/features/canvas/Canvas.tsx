@@ -459,6 +459,13 @@ export function Canvas() {
 
   return (
     <div ref={containerRef} className="relative h-full w-full touch-none overflow-hidden bg-neutral-50" style={{ cursor }}>
+      {elementList.length === 0 && (
+        <p className="pointer-events-none absolute inset-x-0 top-1/3 select-none text-center text-sm text-neutral-400">
+          Pick a tool and start drawing — press{' '}
+          <span className="rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-xs">?</span>{' '}
+          for shortcuts.
+        </p>
+      )}
       {size.width > 0 && (
         <Stage
           ref={stageRef}

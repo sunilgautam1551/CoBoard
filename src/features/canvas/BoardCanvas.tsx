@@ -1,19 +1,31 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useBoardStore } from '@/store/useBoardStore';
+import type { Element } from '@/types';
+import { useSnapshotPersistence } from '@/features/board/hooks/useSnapshotPersistence';
 import { Toolbar } from './Toolbar';
 import { Canvas } from './Canvas';
 import { ZoomIndicator } from './ZoomIndicator';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
-export function BoardCanvas({ boardId }: { boardId: string }) {
+type Props = { boardId: string; initialElements: Element[] };
+
+export function BoardCanvas({ boardId, initialElements }: Props) {
   useKeyboardShortcuts();
   const setBoardId = useBoardStore((s) => s.setBoardId);
+  const loadSnapshot = useBoardStore((s) => s.loadSnapshot);
+  const loadedBoardIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setBoardId(boardId);
-  }, [boardId, setBoardId]);
+    if (loadedBoardIdRef.current !== boardId) {
+      loadedBoardIdRef.current = boardId;
+      loadSnapshot(initialElements);
+    }
+  }, [boardId, initialElements, loadSnapshot, setBoardId]);
+
+  useSnapshotPersistence(boardId);
 
   return (
     <div className="flex h-dvh w-full flex-col">

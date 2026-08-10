@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import type { Element } from '@/types';
 
 const BoardCanvas = dynamic(
   () => import('@/features/canvas/BoardCanvas').then((m) => m.BoardCanvas),
@@ -14,6 +15,8 @@ const BoardCanvas = dynamic(
   },
 );
 
-export function BoardPageClient({ boardId }: { boardId: string }) {
-  return <BoardCanvas boardId={boardId} />;
+type Props = { boardId: string; initialElements: Element[] };
+
+export function BoardPageClient({ boardId, initialElements }: Props) {
+  return <BoardCanvas boardId={boardId} initialElements={initialElements} />;
 }

@@ -29,6 +29,8 @@ interface BoardState {
   future: ElementsMap[];
 
   setBoardId: (boardId: string) => void;
+  /** Hydrates the store from a persisted snapshot, resetting history. */
+  loadSnapshot: (elements: Element[]) => void;
   setTool: (tool: Tool) => void;
   setStyle: (style: Partial<Style>) => void;
   addRecentColor: (color: string) => void;
@@ -61,6 +63,14 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   future: [],
 
   setBoardId: (boardId) => set({ boardId }),
+
+  loadSnapshot: (elements) =>
+    set({
+      elements: Object.fromEntries(elements.map((el) => [el.id, el])),
+      past: [],
+      future: [],
+      selectedIds: [],
+    }),
 
   setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
 

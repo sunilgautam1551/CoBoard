@@ -2,6 +2,7 @@
 
 import { useBoardStore } from '@/store/useBoardStore';
 import type { Tool } from '@/types';
+import { ShareButton } from '@/features/board/components/ShareButton';
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
   { tool: 'select', label: 'Select', shortcut: 'V', icon: '⟡' },
@@ -148,7 +149,8 @@ export function Toolbar() {
         </button>
       </div>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <ShareButton />
         <button
           type="button"
           onClick={handleClear}

@@ -1,17 +1,24 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { newBoardId } from '@/lib/utils';
+import { useTransition } from 'react';
+import { createBoard } from '@/features/board/actions/createBoard';
+import { useToastStore } from '@/store/useToastStore';
 
 export function NewBoardButton() {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const addToast = useToastStore((s) => s.addToast);
 
   function handleClick() {
-    setPending(true);
-    const id = newBoardId();
-    router.push(`/board/${id}`);
+    startTransition(async () => {
+      try {
+        const id = await createBoard();
+        router.push(`/board/${id}`);
+      } catch {
+        addToast('Could not create a board. Please try again.', 'error');
+      }
+    });
   }
 
   return (

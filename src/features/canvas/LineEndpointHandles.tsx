@@ -7,7 +7,7 @@ import type { Element } from '@/types';
 import { applyEndpointBindings } from './lib/binding';
 
 /**
- * Excalidraw-style endpoint handles for a single selected line/arrow —
+ * Endpoint handles for a single selected line/arrow —
  * drag either end directly, instead of a generic bounding-box
  * Transformer (which reads as fiddly for a thin diagonal shape: you're
  * fighting 8 box handles to move one point).

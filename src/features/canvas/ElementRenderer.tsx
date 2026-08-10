@@ -55,7 +55,6 @@ type Props = {
  * the container (Konva applies the parent transform to children for
  * free), and `listening={false}` means clicks/taps on the glyphs fall
  * through to the container's own hit target beneath, matching
- * Excalidraw where you can't select a label independently of its box.
  */
 function BoundTextGlyphs({ container, text }: { container: Element; text: Element }) {
   const box = useMemo(
@@ -81,7 +80,6 @@ function BoundTextGlyphs({ container, text }: { container: Element; text: Elemen
 
 // Selection feedback comes entirely from the Transformer's own outline
 // and handles (or the endpoint circles for line/arrow) — matching
-// Excalidraw, which doesn't glow the shape itself on selection.
 export function ElementRenderer({
   element,
   selectable,

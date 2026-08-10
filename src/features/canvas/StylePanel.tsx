@@ -135,7 +135,6 @@ export function StylePanel() {
   const showStrokeStyle = isShape || isLineArrow;
   const showSloppiness = isShape || isLineArrow;
   const showEdges = primaryType === 'rect' || primaryType === 'diamond';
-  // Only the Arrow tool has arrowheads — Excalidraw's Line tool never
   // shows this section, matching a plain connector with no markers.
   const showArrowheads = primaryType === 'arrow';
   // A selected container with a bound label also gets font-size/align

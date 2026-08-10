@@ -41,7 +41,7 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
   }, []);
 
   // Grows the container live while typing so bound text never overflows
-  // it mid-edit — matches Excalidraw's "container expands as you type."
+  // it mid-edit — matches  "container expands as you type."
   // The internal no-op guard (needed === current height) makes this safe
   // to re-run whenever `container`'s reference changes, including from
   // its own update below.
@@ -115,7 +115,7 @@ export function TextEditor({ elementId, stage, onDone }: Props) {
       onChange={(e) => setValue(e.target.value)}
       onBlur={finish}
       onKeyDown={(e) => {
-        // Enter always inserts a newline — matches Excalidraw, which never
+        // Enter always inserts a newline — matches, which never
         // treats Enter as "finish editing" for any text element, bound or
         // standalone. Only Escape or clicking away commits.
         if (e.key === 'Escape') {

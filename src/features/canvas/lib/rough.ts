@@ -43,7 +43,6 @@ export function seedFromId(id: string): number {
   return Math.abs(hash) % 2 ** 31 || 1;
 }
 
-// Matches Excalidraw's own three named "Sloppiness" presets.
 export const ROUGHNESS_PRESETS = { architect: 0.5, artist: 1.4, cartoonist: 2.8 } as const;
 
 const STROKE_DASH: Record<StrokeStyle, number[] | undefined> = {
@@ -59,7 +58,7 @@ function toRoughOptions(seed: number, strokeWidth: number, style: ShapeStyle): O
     roughness: style.roughness,
     stroke: style.stroke,
     fill: style.fill,
-    // Defaults to 'solid' (Excalidraw's own default) rather than
+    // Defaults to 'solid' ( own default) rather than
     // 'hachure' — hachure is an opt-in choice, not the default; using it
     // unconditionally previously read as "not filling completely".
     fillStyle: style.fillStyle ?? 'solid',

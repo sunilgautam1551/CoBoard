@@ -91,7 +91,7 @@ export function Canvas() {
 
   // Drawing gesture state (kept in refs — no re-render needed mid-gesture).
   // isMultiPoint distinguishes a line/arrow being built via repeated
-  // clicks (Excalidraw's "click to add a vertex, double-click/Enter/
+  // clicks (click to add a vertex, double-click/Enter/
   // Escape to finish") from a plain click-drag 2-point line — see
   // handlePointerUp for how that's detected.
   const drawing = useRef<{
@@ -124,7 +124,7 @@ export function Canvas() {
     else nodesRef.current.delete(id);
   }, []);
 
-  // A single selected 2-point line/arrow gets Excalidraw-style endpoint-
+  // A single selected 2-point line/arrow gets endpoint-
   // drag handles instead of a generic bounding-box Transformer — see
   // LineEndpointHandles for why (a box's 8 handles are fiddly for a thin
   // diagonal shape when "move one end" is all you usually want). A
@@ -137,7 +137,7 @@ export function Canvas() {
     (singleSelectedElement.points?.length ?? 0) === 4;
 
   // Keep transformer in sync with selection. Hidden entirely while a text
-  // (bound or standalone) is being edited — matches Excalidraw, which
+  // (bound or standalone) is being edited — matches, which
   // shows no resize handles during text entry.
   useEffect(() => {
     const tr = transformerRef.current;
@@ -234,7 +234,7 @@ export function Canvas() {
     [style, commitElement, setSelectedIds, setTool],
   );
 
-  // Double-clicking inside a shape binds a label to it (Excalidraw's
+  // Double-clicking inside a shape binds a label to it (
   // "container text") instead of dropping a free-floating text element
   // on top — the label centers itself, wraps to the shape's width, and
   // the shape grows to fit it instead of the text spilling out past it.
@@ -364,7 +364,7 @@ export function Canvas() {
     [isPanMode, tool, viewport, deleteElements, startShapeDraw, createTextAt, applyElement, finishMultiPointLine],
   );
 
-  // Double-click with the select tool: matches Excalidraw's "you don't
+  // Double-click with the select tool: matches "you don't
   // need a separate text tool" behavior.
   // - On an existing standalone text element, re-opens it for editing.
   // - On a shape (rect/diamond/ellipse), opens its bound label if it has
@@ -519,7 +519,7 @@ export function Canvas() {
           const clickThreshold = 4 / viewport.scale;
           if (moved < clickThreshold) {
             // A click, not a drag: enter/stay in multi-point mode instead
-            // of finishing — matches Excalidraw's dual click-to-build-a-
+            // of finishing — matches  dual click-to-build-a-
             // polyline vs. drag-for-a-simple-segment behavior.
             drawing.current = { ...drawing.current, isMultiPoint: true };
             lastPointClick.current = { x: drawing.current.downAt.x, y: drawing.current.downAt.y, time: Date.now() };

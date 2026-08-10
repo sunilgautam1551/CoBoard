@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Transformer } from 'react-konva';
+import { Stage, Layer, Rect, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useBoardStore } from '@/store/useBoardStore';
@@ -11,7 +11,9 @@ import { newElementId } from '@/lib/utils';
 import type { Element, ElementType } from '@/types';
 import { ElementRenderer } from './ElementRenderer';
 import { getWorldPointer, bakeNodeTransform, translatePoints } from './lib/transform';
+import { getElementBounds, boundsIntersect } from './lib/bounds';
 import { TextEditor } from './TextEditor';
+import { LineEndpointHandles } from './LineEndpointHandles';
 import { RemoteCursors } from '@/features/presence/RemoteCursors';
 
 const SHAPE_TOOLS: ElementType[] = ['rect', 'ellipse', 'line', 'arrow'];
@@ -83,6 +85,8 @@ export function Canvas() {
   } | null>(null);
   const panning = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const lastPinchDist = useRef<number | null>(null);
+  const marqueeStart = useRef<{ x: number; y: number } | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const isPanMode = spaceDown;
 
@@ -91,16 +95,27 @@ export function Canvas() {
     else nodesRef.current.delete(id);
   }, []);
 
+  // A single selected line/arrow gets Excalidraw-style endpoint-drag
+  // handles instead of a generic bounding-box Transformer — see
+  // LineEndpointHandles for why (a box's 8 handles are fiddly for a
+  // thin diagonal shape when "move one end" is all you usually want).
+  const singleSelectedElement =
+    selectedIds.length === 1 ? elements[selectedIds[0]] : null;
+  const usesEndpointHandles =
+    singleSelectedElement?.type === 'line' || singleSelectedElement?.type === 'arrow';
+
   // Keep transformer in sync with selection.
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    const nodes = selectedIds
-      .map((id) => nodesRef.current.get(id))
-      .filter((n): n is Konva.Node => Boolean(n));
+    const nodes = usesEndpointHandles
+      ? []
+      : selectedIds
+          .map((id) => nodesRef.current.get(id))
+          .filter((n): n is Konva.Node => Boolean(n));
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, elements]);
+  }, [selectedIds, elements, usesEndpointHandles]);
 
   const startShapeDraw = useCallback(
     (type: ElementType, world: { x: number; y: number }) => {
@@ -147,7 +162,10 @@ export function Canvas() {
       const world = getWorldPointer(stage);
 
       if (tool === 'select') {
-        if (clickedOnEmpty) setSelectedIds([]);
+        if (clickedOnEmpty) {
+          marqueeStart.current = world;
+          setMarqueeRect({ x: world.x, y: world.y, w: 0, h: 0 });
+        }
         return;
       }
 
@@ -186,7 +204,7 @@ export function Canvas() {
         startShapeDraw(tool === 'pen' ? 'path' : (tool as ElementType), world);
       }
     },
-    [isPanMode, tool, viewport, setSelectedIds, deleteElements, style, commitElement, startShapeDraw],
+    [isPanMode, tool, viewport, deleteElements, style, commitElement, startShapeDraw],
   );
 
   const handlePointerMove = useCallback(
@@ -201,6 +219,17 @@ export function Canvas() {
         const dx = e.evt.clientX - panning.current.startX;
         const dy = e.evt.clientY - panning.current.startY;
         setViewport({ x: panning.current.originX + dx, y: panning.current.originY + dy });
+        return;
+      }
+
+      if (marqueeStart.current) {
+        const start = marqueeStart.current;
+        setMarqueeRect({
+          x: Math.min(start.x, world.x),
+          y: Math.min(start.y, world.y),
+          w: Math.abs(world.x - start.x),
+          h: Math.abs(world.y - start.y),
+        });
         return;
       }
 
@@ -250,6 +279,20 @@ export function Canvas() {
       panning.current = null;
       return;
     }
+    if (marqueeStart.current) {
+      const rect = marqueeRect;
+      marqueeStart.current = null;
+      setMarqueeRect(null);
+      if (rect && (rect.w > 2 || rect.h > 2)) {
+        const hits = Object.values(useBoardStore.getState().elements)
+          .filter((el) => !el.deleted && boundsIntersect(getElementBounds(el), rect))
+          .map((el) => el.id);
+        setSelectedIds(hits);
+      } else {
+        setSelectedIds([]);
+      }
+      return;
+    }
     if (drawing.current) {
       const current = useBoardStore.getState().elements[drawing.current.id];
       drawing.current = null;
@@ -270,7 +313,7 @@ export function Canvas() {
         setSelectedIds([current.id]);
       }
     }
-  }, [commitElement, setSelectedIds, tool, setTool]);
+  }, [commitElement, setSelectedIds, tool, setTool, marqueeRect]);
 
   const handleWheel = useCallback(
     (e: KonvaEventObject<WheelEvent>) => {
@@ -506,6 +549,21 @@ export function Canvas() {
                 Math.abs(newBox.width) < 4 || Math.abs(newBox.height) < 4 ? oldBox : newBox
               }
             />
+            {usesEndpointHandles && singleSelectedElement && (
+              <LineEndpointHandles element={singleSelectedElement} scale={viewport.scale} />
+            )}
+            {marqueeRect && (
+              <Rect
+                x={marqueeRect.x}
+                y={marqueeRect.y}
+                width={marqueeRect.w}
+                height={marqueeRect.h}
+                fill="rgba(124, 58, 237, 0.08)"
+                stroke="#7c3aed"
+                strokeWidth={1 / viewport.scale}
+                listening={false}
+              />
+            )}
           </Layer>
           <RemoteCursors />
         </Stage>

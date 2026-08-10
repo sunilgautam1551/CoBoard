@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { useBoardStore } from '@/store/useBoardStore';
+import { useBoardStore, type Style } from '@/store/useBoardStore';
 import { useSyncStore } from '@/features/sync/useSyncStore';
 import type { Tool } from '@/types';
 import { ShareButton } from '@/features/board/components/ShareButton';
@@ -21,6 +21,12 @@ const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
 ];
 
 const SWATCHES = ['#1e1e1e', '#e03131', '#2f9e44', '#1971c2', '#f08c00'];
+const FONT_SIZES: { label: string; value: number }[] = [
+  { label: 'S', value: 16 },
+  { label: 'M', value: 20 },
+  { label: 'L', value: 28 },
+  { label: 'XL', value: 36 },
+];
 
 type Props = { onOpenShortcuts: () => void };
 
@@ -29,6 +35,9 @@ export function Toolbar({ onOpenShortcuts }: Props) {
   const setTool = useBoardStore((s) => s.setTool);
   const style = useBoardStore((s) => s.style);
   const setStyle = useBoardStore((s) => s.setStyle);
+  const applyStyleToSelection = useBoardStore((s) => s.applyStyleToSelection);
+  const selectedIds = useBoardStore((s) => s.selectedIds);
+  const elements = useBoardStore((s) => s.elements);
   const recentColors = useBoardStore((s) => s.recentColors);
   const addRecentColor = useBoardStore((s) => s.addRecentColor);
   const undo = useBoardStore((s) => s.undo);
@@ -39,8 +48,24 @@ export function Toolbar({ onOpenShortcuts }: Props) {
 
   const toolButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // Updates the default style for new elements AND, if something is
+  // already selected, restyles it live and broadcasts the change —
+  // otherwise the style panel only ever affected shapes you hadn't
+  // drawn yet.
+  function applyAndBroadcast(patch: Partial<Style>) {
+    setStyle(patch);
+    const ids = useBoardStore.getState().selectedIds;
+    if (ids.length === 0) return;
+    applyStyleToSelection(patch);
+    const updated = useBoardStore.getState().elements;
+    for (const id of ids) {
+      const el = updated[id];
+      if (el) useSyncStore.getState().sendUpsert(el);
+    }
+  }
+
   function handleStrokeChange(color: string) {
-    setStyle({ stroke: color });
+    applyAndBroadcast({ stroke: color });
     addRecentColor(color);
   }
 
@@ -71,6 +96,12 @@ export function Toolbar({ onOpenShortcuts }: Props) {
       toolButtonRefs.current[nextIndex]?.focus();
     }
   }
+
+  const showFontSize =
+    tool === 'text' || selectedIds.some((id) => elements[id]?.type === 'text');
+  const activeFontSize =
+    selectedIds.map((id) => elements[id]).find((el) => el?.type === 'text')?.fontSize ??
+    style.fontSize;
 
   return (
     <div
@@ -126,14 +157,14 @@ export function Toolbar({ onOpenShortcuts }: Props) {
           <input
             type="color"
             value={style.fill === 'transparent' ? '#ffffff' : style.fill}
-            onChange={(e) => setStyle({ fill: e.target.value })}
+            onChange={(e) => applyAndBroadcast({ fill: e.target.value })}
             aria-label="Fill color"
             title="Fill color"
             className="h-6 w-6 cursor-pointer rounded-md border border-neutral-300"
           />
           <button
             type="button"
-            onClick={() => setStyle({ fill: 'transparent' })}
+            onClick={() => applyAndBroadcast({ fill: 'transparent' })}
             aria-pressed={style.fill === 'transparent'}
             title="No fill"
             className={`rounded-md border px-1.5 py-0.5 text-[10px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900 ${
@@ -152,12 +183,33 @@ export function Toolbar({ onOpenShortcuts }: Props) {
             min={1}
             max={20}
             value={style.strokeWidth}
-            onChange={(e) => setStyle({ strokeWidth: Number(e.target.value) })}
+            onChange={(e) => applyAndBroadcast({ strokeWidth: Number(e.target.value) })}
             aria-label="Stroke width"
             title="Stroke width"
             className="w-16 cursor-pointer accent-violet-600"
           />
         </label>
+        {showFontSize && (
+          <div className="flex items-center gap-0.5" role="group" aria-label="Font size">
+            {FONT_SIZES.map(({ label, value }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => applyAndBroadcast({ fontSize: value })}
+                aria-pressed={activeFontSize === value}
+                aria-label={`Font size: ${label}`}
+                title={`Font size: ${label}`}
+                className={`flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900 ${
+                  activeFontSize === value
+                    ? 'bg-violet-600 text-white'
+                    : 'text-neutral-500 hover:bg-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Recent colors">
           {(recentColors.length ? recentColors : SWATCHES).map((c) => (
             <button

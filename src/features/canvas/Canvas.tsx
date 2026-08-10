@@ -142,6 +142,30 @@ export function Canvas() {
     [applyElement, style],
   );
 
+  const createTextAt = useCallback(
+    (world: { x: number; y: number }) => {
+      const id = newElementId();
+      const element: Element = {
+        id,
+        type: 'text',
+        x: world.x,
+        y: world.y,
+        text: '',
+        fontSize: style.fontSize,
+        stroke: style.stroke,
+        fill: style.fill,
+        strokeWidth: style.strokeWidth,
+        updatedAt: Date.now(),
+        updatedBy: useBoardStore.getState().clientId,
+      };
+      commitElement(element);
+      setEditingTextId(id);
+      setSelectedIds([id]);
+      setTool('select');
+    },
+    [style, commitElement, setSelectedIds, setTool],
+  );
+
   const handlePointerDown = useCallback(
     (e: KonvaEventObject<PointerEvent>) => {
       const stage = stageRef.current;
@@ -181,22 +205,7 @@ export function Canvas() {
       }
 
       if (tool === 'text') {
-        const id = newElementId();
-        const element: Element = {
-          id,
-          type: 'text',
-          x: world.x,
-          y: world.y,
-          text: '',
-          fontSize: 20,
-          stroke: style.stroke,
-          fill: style.fill,
-          strokeWidth: style.strokeWidth,
-          updatedAt: Date.now(),
-          updatedBy: useBoardStore.getState().clientId,
-        };
-        commitElement(element);
-        setEditingTextId(id);
+        createTextAt(world);
         return;
       }
 
@@ -204,7 +213,30 @@ export function Canvas() {
         startShapeDraw(tool === 'pen' ? 'path' : (tool as ElementType), world);
       }
     },
-    [isPanMode, tool, viewport, deleteElements, style, commitElement, startShapeDraw],
+    [isPanMode, tool, viewport, deleteElements, startShapeDraw, createTextAt],
+  );
+
+  // Double-click with the select tool: matches Excalidraw's "you don't
+  // need a separate text tool" behavior. On an existing text element it
+  // re-opens it for editing (there was previously no way back into a
+  // text element once you clicked away — a real gap, not just a style
+  // difference). Anywhere else it creates a new one.
+  const handleDoubleClick = useCallback(
+    (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      const stage = stageRef.current;
+      if (!stage || tool !== 'select') return;
+      const target = e.target;
+      if (target !== stage && target.id()) {
+        const existing = useBoardStore.getState().elements[target.id()];
+        if (existing?.type === 'text') {
+          setSelectedIds([existing.id]);
+          setEditingTextId(existing.id);
+          return;
+        }
+      }
+      createTextAt(getWorldPointer(stage));
+    },
+    [tool, setSelectedIds, createTextAt],
   );
 
   const handlePointerMove = useCallback(
@@ -522,6 +554,8 @@ export function Canvas() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={() => useSyncStore.getState().clearCursor()}
+          onDblClick={handleDoubleClick}
+          onDblTap={handleDoubleClick}
           onWheel={handleWheel}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}

@@ -8,7 +8,7 @@ import { useSyncStore } from '@/features/sync/useSyncStore';
 
 export type ElementsMap = Record<string, Element>;
 
-export type Style = { stroke: string; fill: string; strokeWidth: number };
+export type Style = { stroke: string; fill: string; strokeWidth: number; fontSize: number };
 
 export type Viewport = { x: number; y: number; scale: number };
 
@@ -16,6 +16,7 @@ const DEFAULT_STYLE: Style = {
   stroke: '#1e1e1e',
   fill: 'transparent',
   strokeWidth: 3,
+  fontSize: 20,
 };
 
 interface BoardState {
@@ -40,6 +41,14 @@ interface BoardState {
   loadSnapshot: (elements: Element[]) => void;
   setTool: (tool: Tool) => void;
   setStyle: (style: Partial<Style>) => void;
+  /**
+   * Applies a style patch to every currently-selected element (in
+   * addition to `setStyle` updating the default for new elements) —
+   * without this, the style panel only ever affected shapes you
+   * hadn't drawn yet, which read as "I can't recolor anything I
+   * already made." fontSize only applies to text elements.
+   */
+  applyStyleToSelection: (style: Partial<Style>) => void;
   addRecentColor: (color: string) => void;
   setViewport: (viewport: Partial<Viewport>) => void;
   setSelectedIds: (ids: string[]) => void;
@@ -100,6 +109,26 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
 
   setStyle: (style) => set((s) => ({ style: { ...s.style, ...style } })),
+
+  applyStyleToSelection: (patch) => {
+    const { selectedIds } = get();
+    if (selectedIds.length === 0) return;
+    get().snapshotHistory();
+    set((s) => {
+      const next = { ...s.elements };
+      for (const id of selectedIds) {
+        const el = next[id];
+        if (!el) continue;
+        const updated: Element = { ...el, updatedAt: Date.now() };
+        if (patch.stroke !== undefined) updated.stroke = patch.stroke;
+        if (patch.fill !== undefined) updated.fill = patch.fill;
+        if (patch.strokeWidth !== undefined) updated.strokeWidth = patch.strokeWidth;
+        if (patch.fontSize !== undefined && el.type === 'text') updated.fontSize = patch.fontSize;
+        next[id] = updated;
+      }
+      return { elements: next };
+    });
+  },
 
   addRecentColor: (color) =>
     set((s) => ({

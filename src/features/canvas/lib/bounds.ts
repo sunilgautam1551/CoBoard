@@ -6,6 +6,7 @@ export type Bounds = { x: number; y: number; w: number; h: number };
 export function getElementBounds(element: Element): Bounds {
   switch (element.type) {
     case 'rect':
+    case 'diamond':
     case 'ellipse':
       return { x: element.x ?? 0, y: element.y ?? 0, w: element.w ?? 0, h: element.h ?? 0 };
     case 'line':

@@ -34,13 +34,15 @@ export function seedFromId(id: string): number {
   return Math.abs(hash) % 2 ** 31 || 1;
 }
 
+// Excalidraw's default fill style is 'solid', not 'hachure' — hachure is
+// an option you opt into, not the default. Using it unconditionally read
+// as "not filling completely" (a few diagonal lines instead of a filled
+// shape), which is exactly the reported complaint.
 const baseOptions = (seed: number, strokeWidth: number): Options => ({
   seed,
   roughness: 1.4,
   strokeWidth,
-  fillStyle: 'hachure',
-  fillWeight: strokeWidth / 2,
-  hachureGap: strokeWidth * 3,
+  fillStyle: 'solid',
   curveFitting: 0.98,
 });
 
@@ -66,6 +68,25 @@ export function roughEllipse(
 ): RoughPath[] {
   return drawableToPaths(
     generator.ellipse(0, 0, w, h, { ...baseOptions(seed, strokeWidth), ...options }),
+  );
+}
+
+/** Diamond connecting the midpoints of a w×h bounding box's edges. */
+export function roughDiamond(
+  w: number,
+  h: number,
+  seed: number,
+  strokeWidth: number,
+  options: Partial<Options>,
+): RoughPath[] {
+  const points: [number, number][] = [
+    [w / 2, 0],
+    [w, h / 2],
+    [w / 2, h],
+    [0, h / 2],
+  ];
+  return drawableToPaths(
+    generator.polygon(points, { ...baseOptions(seed, strokeWidth), ...options }),
   );
 }
 

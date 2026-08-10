@@ -4,8 +4,10 @@ import { useEffect, useRef } from 'react';
 
 const SHORTCUTS: [string, string][] = [
   ['V', 'Select'],
+  ['H', 'Hand (pan)'],
   ['P', 'Pen'],
   ['R', 'Rectangle'],
+  ['D', 'Diamond'],
   ['O', 'Ellipse'],
   ['L', 'Line'],
   ['A', 'Arrow'],
@@ -13,6 +15,7 @@ const SHORTCUTS: [string, string][] = [
   ['E', 'Eraser'],
   ['Delete / Backspace', 'Delete selection'],
   ['Shift + click', 'Add to selection'],
+  ['Drag on empty canvas', 'Marquee-select'],
   ['Space + drag', 'Pan canvas'],
   ['Middle-mouse drag', 'Pan canvas'],
   ['Scroll / pinch', 'Zoom'],

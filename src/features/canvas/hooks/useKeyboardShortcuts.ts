@@ -4,8 +4,10 @@ import type { Tool } from '@/types';
 
 const SHORTCUT_TOOLS: Record<string, Tool> = {
   v: 'select',
+  h: 'hand',
   p: 'pen',
   r: 'rect',
+  d: 'diamond',
   o: 'ellipse',
   l: 'line',
   a: 'arrow',

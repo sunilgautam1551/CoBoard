@@ -7,6 +7,7 @@
 export type ElementType =
   | 'path'
   | 'rect'
+  | 'diamond'
   | 'ellipse'
   | 'line'
   | 'arrow'
@@ -52,8 +53,10 @@ export type Presence = {
 
 export type Tool =
   | 'select'
+  | 'hand'
   | 'pen'
   | 'rect'
+  | 'diamond'
   | 'ellipse'
   | 'line'
   | 'arrow'

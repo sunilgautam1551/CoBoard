@@ -23,7 +23,8 @@ export function bakeNodeTransform(element: Element, node: Konva.Node): Element {
   const rotation = node.rotation();
 
   switch (element.type) {
-    case 'rect': {
+    case 'rect':
+    case 'diamond': {
       return {
         ...element,
         x,

@@ -9,8 +9,10 @@ import { AvatarStack } from '@/features/presence/AvatarStack';
 
 const TOOLS: { tool: Tool; label: string; shortcut: string; icon: string }[] = [
   { tool: 'select', label: 'Select', shortcut: 'V', icon: '⟡' },
+  { tool: 'hand', label: 'Hand (pan)', shortcut: 'H', icon: '✋︎' },
   { tool: 'pen', label: 'Pen', shortcut: 'P', icon: '✎' },
   { tool: 'rect', label: 'Rectangle', shortcut: 'R', icon: '▭' },
+  { tool: 'diamond', label: 'Diamond', shortcut: 'D', icon: '◆' },
   { tool: 'ellipse', label: 'Ellipse', shortcut: 'O', icon: '◯' },
   { tool: 'line', label: 'Line', shortcut: 'L', icon: '╱' },
   { tool: 'arrow', label: 'Arrow', shortcut: 'A', icon: '➜' },
@@ -77,7 +79,7 @@ export function Toolbar({ onOpenShortcuts }: Props) {
       className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-neutral-200/80 bg-white/95 px-2.5 py-2 shadow-lg shadow-neutral-900/5 backdrop-blur"
     >
       <div
-        className="flex items-center gap-0.5"
+        className="flex flex-wrap items-center gap-0.5"
         role="group"
         aria-label="Tools"
         onKeyDown={handleToolsKeyDown}
@@ -156,7 +158,7 @@ export function Toolbar({ onOpenShortcuts }: Props) {
             className="w-16 cursor-pointer accent-violet-600"
           />
         </label>
-        <div className="flex items-center gap-1" role="group" aria-label="Recent colors">
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Recent colors">
           {(recentColors.length ? recentColors : SWATCHES).map((c) => (
             <button
               key={c}

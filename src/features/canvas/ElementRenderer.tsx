@@ -4,7 +4,7 @@ import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Element } from '@/types';
 import { pointsToSvgPath } from './lib/freehand';
-import { roughRect, roughEllipse, roughLine, seedFromId, type RoughPath } from './lib/rough';
+import { roughRect, roughDiamond, roughEllipse, roughLine, seedFromId, type RoughPath } from './lib/rough';
 import { arrowHeadPoints } from './lib/arrowhead';
 
 type Props = {
@@ -57,6 +57,12 @@ export function ElementRenderer({
         fill: element.fill === 'transparent' ? undefined : element.fill,
       });
     }
+    if (element.type === 'diamond') {
+      return roughDiamond(w, h, seed, element.strokeWidth, {
+        stroke: element.stroke,
+        fill: element.fill === 'transparent' ? undefined : element.fill,
+      });
+    }
     if (element.type === 'ellipse') {
       return roughEllipse(w, h, seed, element.strokeWidth, {
         stroke: element.stroke,
@@ -77,6 +83,31 @@ export function ElementRenderer({
               covers a few border pixels, so without this a hollow shape
               could only be selected by clicking exactly on its edge. */}
           <Rect id={element.id} width={w} height={h} fill="transparent" />
+          {roughPaths.map((p, i) => (
+            <Path
+              key={i}
+              id={element.id}
+              data={p.d}
+              stroke={p.fill ? undefined : element.stroke}
+              fill={p.fill ? element.fill : undefined}
+              strokeWidth={element.strokeWidth}
+              lineCap="round"
+              lineJoin="round"
+              hitStrokeWidth={Math.max(16, element.strokeWidth)}
+              {...shadow}
+            />
+          ))}
+        </Group>
+      );
+    case 'diamond':
+      return (
+        <Group {...common} x={element.x ?? 0} y={element.y ?? 0} rotation={element.rotation ?? 0}>
+          <Line
+            id={element.id}
+            points={[w / 2, 0, w, h / 2, w / 2, h, 0, h / 2]}
+            closed
+            fill="transparent"
+          />
           {roughPaths.map((p, i) => (
             <Path
               key={i}

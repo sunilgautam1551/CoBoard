@@ -16,7 +16,7 @@ import { TextEditor } from './TextEditor';
 import { LineEndpointHandles } from './LineEndpointHandles';
 import { RemoteCursors } from '@/features/presence/RemoteCursors';
 
-const SHAPE_TOOLS: ElementType[] = ['rect', 'ellipse', 'line', 'arrow'];
+const SHAPE_TOOLS: ElementType[] = ['rect', 'diamond', 'ellipse', 'line', 'arrow'];
 
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,7 +88,7 @@ export function Canvas() {
   const marqueeStart = useRef<{ x: number; y: number } | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
-  const isPanMode = spaceDown;
+  const isPanMode = spaceDown || tool === 'hand';
 
   const registerNode = useCallback((id: string, node: Konva.Node | null) => {
     if (node) nodesRef.current.set(id, node);
@@ -129,7 +129,7 @@ export function Canvas() {
         updatedBy: useBoardStore.getState().clientId,
       };
       let element: Element;
-      if (type === 'rect' || type === 'ellipse') {
+      if (type === 'rect' || type === 'diamond' || type === 'ellipse') {
         element = { ...base, type, x: world.x, y: world.y, w: 0, h: 0 };
       } else if (type === 'line' || type === 'arrow') {
         element = { ...base, type, points: [world.x, world.y, world.x, world.y] };
@@ -249,7 +249,7 @@ export function Canvas() {
       if (!current) return;
 
       let next: Element | null = null;
-      if (current.type === 'rect' || current.type === 'ellipse') {
+      if (current.type === 'rect' || current.type === 'diamond' || current.type === 'ellipse') {
         next = {
           ...current,
           w: world.x - drawing.current.startX,
@@ -297,10 +297,10 @@ export function Canvas() {
       const current = useBoardStore.getState().elements[drawing.current.id];
       drawing.current = null;
       if (current) {
-        // Normalize negative width/height for rect/ellipse so hit-testing
-        // and selection behave correctly.
+        // Normalize negative width/height so hit-testing and selection
+        // behave correctly.
         let final: Element;
-        if (current.type === 'rect' || current.type === 'ellipse') {
+        if (current.type === 'rect' || current.type === 'diamond' || current.type === 'ellipse') {
           const x = current.w! < 0 ? current.x! + current.w! : current.x!;
           const y = current.h! < 0 ? current.y! + current.h! : current.y!;
           final = { ...current, x, y, w: Math.abs(current.w!), h: Math.abs(current.h!) };

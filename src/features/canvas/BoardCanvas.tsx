@@ -34,14 +34,14 @@ export function BoardCanvas({ boardId, initialElements }: Props) {
   useRealtimeSync(boardId);
 
   return (
-    <div className="flex h-dvh w-full flex-col">
-      <header>
-        <Toolbar onOpenShortcuts={() => setShortcutsOpen(true)} />
-      </header>
-      <main className="relative flex-1">
+    <div className="relative h-dvh w-full">
+      <main className="absolute inset-0">
         <Canvas />
         <ZoomIndicator />
       </main>
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-3 pt-3">
+        <Toolbar onOpenShortcuts={() => setShortcutsOpen(true)} />
+      </header>
       <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );

@@ -7,18 +7,20 @@ const CURSOR_PATH = 'M0 0 L0 14 L4 10.5 L6.5 15.5 L8.5 14.5 L6 9.5 L11 9.5 Z';
 
 export function RemoteCursors() {
   const participants = usePresenceStore((s) => s.participants);
+  const cursors = usePresenceStore((s) => s.cursors);
   const scale = useBoardStore((s) => s.viewport.scale);
   const counterScale = 1 / scale;
 
   return (
     <Layer listening={false}>
-      {Object.values(participants)
-        .filter((p) => p.cursor !== null)
-        .map((p) => (
+      {Object.values(participants).map((p) => {
+        const cursor = cursors[p.clientId];
+        if (!cursor) return null;
+        return (
           <Group
             key={p.clientId}
-            x={p.cursor!.x}
-            y={p.cursor!.y}
+            x={cursor.x}
+            y={cursor.y}
             scaleX={counterScale}
             scaleY={counterScale}
           >
@@ -28,7 +30,8 @@ export function RemoteCursors() {
               <Text text={p.name} fontSize={11} padding={4} fill="white" />
             </Label>
           </Group>
-        ))}
+        );
+      })}
     </Layer>
   );
 }

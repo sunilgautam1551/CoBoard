@@ -33,7 +33,7 @@ export function useRealtimeSync(boardId: string) {
   useEffect(() => {
     if (!boardId) return;
 
-    const { clientId, name, color } = useBoardStore.getState();
+    const { clientId } = useBoardStore.getState();
     let disposed = false;
     let activeChannel: RealtimeChannel | null = null;
     let reconnectAttempts = 0;
@@ -155,13 +155,18 @@ export function useRealtimeSync(boardId: string) {
         sendCursor({ x, y });
       }, config.cursorThrottleMs);
 
+      const trackIdentity = () => {
+        const { name, color } = useBoardStore.getState();
+        channel.track({ clientId, name, color } satisfies PresenceIdentity);
+      };
+
       let hasSubscribedOnce = false;
       channel.subscribe(async (status) => {
         useSyncStore.setState({ connected: status === 'SUBSCRIBED' });
 
         if (status === 'SUBSCRIBED') {
           reconnectAttempts = 0;
-          channel.track({ clientId, name, color } satisfies PresenceIdentity);
+          trackIdentity();
 
           if (hasSubscribedOnce) {
             // Reconnected after a drop — re-hydrate from the latest
@@ -186,6 +191,7 @@ export function useRealtimeSync(boardId: string) {
               lastCursor = null;
               sendCursor(null);
             },
+            retrackIdentity: trackIdentity,
           });
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           useToastStore.getState().addToast('Connection lost — reconnecting…', 'error');
@@ -212,6 +218,7 @@ export function useRealtimeSync(boardId: string) {
         sendDelete: () => {},
         updateCursor: () => {},
         clearCursor: () => {},
+        retrackIdentity: () => {},
       });
       if (activeChannel) supabase.removeChannel(activeChannel);
     };

@@ -17,12 +17,12 @@ export function ZoomIndicator() {
   }
 
   return (
-    <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-1 py-1 text-xs shadow-sm">
+    <div className="pointer-events-auto absolute bottom-4 right-4 flex items-center gap-0.5 rounded-2xl border border-neutral-200/80 bg-white/95 px-1 py-1 text-xs shadow-lg shadow-neutral-900/5 backdrop-blur">
       <button
         type="button"
         onClick={() => zoomBy(1 / config.zoomStep)}
         aria-label="Zoom out"
-        className="flex h-7 w-7 items-center justify-center rounded hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
+        className="flex h-7 w-7 items-center justify-center rounded-xl text-neutral-600 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
       >
         −
       </button>
@@ -30,7 +30,7 @@ export function ZoomIndicator() {
         type="button"
         onClick={reset}
         aria-label="Reset zoom to 100%"
-        className="min-w-[3.5rem] rounded px-1 py-1 text-center tabular-nums hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
+        className="min-w-[3.5rem] rounded-xl px-1 py-1 text-center tabular-nums text-neutral-700 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
       >
         {Math.round(scale * 100)}%
       </button>
@@ -38,7 +38,7 @@ export function ZoomIndicator() {
         type="button"
         onClick={() => zoomBy(config.zoomStep)}
         aria-label="Zoom in"
-        className="flex h-7 w-7 items-center justify-center rounded hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
+        className="flex h-7 w-7 items-center justify-center rounded-xl text-neutral-600 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-900"
       >
         +
       </button>

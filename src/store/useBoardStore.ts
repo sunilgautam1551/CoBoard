@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import type { Element, Tool } from '@/types';
 import { newClientId, randomName, colorFromId } from '@/lib/utils';
+import { loadStoredName, storeName, loadOrCreateColorSeed } from '@/lib/identity';
 import { config } from '@/lib/config';
 import { shouldApplyRemote } from '@/features/sync/lww';
+import { useSyncStore } from '@/features/sync/useSyncStore';
 
 export type ElementsMap = Record<string, Element>;
 
@@ -32,6 +34,8 @@ interface BoardState {
   future: ElementsMap[];
 
   setBoardId: (boardId: string) => void;
+  /** Renames this client, persists it, and re-announces presence. */
+  setName: (name: string) => void;
   /** Hydrates the store from a persisted snapshot, resetting history. */
   loadSnapshot: (elements: Element[]) => void;
   setTool: (tool: Tool) => void;
@@ -58,11 +62,12 @@ interface BoardState {
 }
 
 const clientId = newClientId();
+const colorSeed = loadOrCreateColorSeed(clientId);
 
 export const useBoardStore = create<BoardState>((set, get) => ({
   clientId,
-  name: randomName(),
-  color: colorFromId(clientId),
+  name: loadStoredName() ?? randomName(),
+  color: colorFromId(colorSeed),
   boardId: '',
   elements: {},
   selectedIds: [],
@@ -75,6 +80,14 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   future: [],
 
   setBoardId: (boardId) => set({ boardId }),
+
+  setName: (name) => {
+    const trimmed = name.trim().slice(0, 40);
+    if (!trimmed) return;
+    storeName(trimmed);
+    set({ name: trimmed });
+    useSyncStore.getState().retrackIdentity();
+  },
 
   loadSnapshot: (elements) =>
     set({

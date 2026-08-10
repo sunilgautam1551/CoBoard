@@ -16,6 +16,8 @@ type SyncBus = {
   updateCursor: (x: number, y: number) => void;
   /** Immediately marks this client's cursor as off-canvas. */
   clearCursor: () => void;
+  /** Re-announces this client's identity (e.g. after a name change). */
+  retrackIdentity: () => void;
 };
 
 const noop = () => {};
@@ -27,4 +29,5 @@ export const useSyncStore = create<SyncBus>(() => ({
   sendDelete: noop,
   updateCursor: noop,
   clearCursor: noop,
+  retrackIdentity: noop,
 }));

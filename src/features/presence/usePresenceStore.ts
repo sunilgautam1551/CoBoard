@@ -5,11 +5,17 @@ interface PresenceState {
   /** Remote participants only — never includes the local client. */
   participants: Record<string, Presence>;
   /**
-   * Merges a fresh roster from presence sync (clientId/name/color),
-   * preserving each participant's last-known cursor position — cursor
-   * updates arrive separately over broadcast, not presence (see
-   * useRealtimeSync for why).
+   * Cursor positions, keyed by clientId, independent of `participants`.
+   *
+   * These arrive over a different channel (broadcast) than identity
+   * (presence sync), so they can — and regularly do — arrive out of
+   * order: a cursor:move can land before the presence_diff that
+   * introduces that clientId. Keeping them in the same map as identity
+   * meant an early cursor update had nowhere to attach and was
+   * silently dropped, which read as "their cursor doesn't show" or a
+   * stale/laggy position once it did. Decoupled so nothing is lost.
    */
+  cursors: Record<string, { x: number; y: number } | null>;
   setParticipants: (participants: Record<string, Presence>) => void;
   updateCursor: (clientId: string, cursor: { x: number; y: number } | null) => void;
   clear: () => void;
@@ -17,22 +23,12 @@ interface PresenceState {
 
 export const usePresenceStore = create<PresenceState>((set) => ({
   participants: {},
+  cursors: {},
 
-  setParticipants: (incoming) =>
-    set((s) => {
-      const next: Record<string, Presence> = {};
-      for (const [id, p] of Object.entries(incoming)) {
-        next[id] = { ...p, cursor: s.participants[id]?.cursor ?? null };
-      }
-      return { participants: next };
-    }),
+  setParticipants: (participants) => set({ participants }),
 
   updateCursor: (clientId, cursor) =>
-    set((s) => {
-      const existing = s.participants[clientId];
-      if (!existing) return s;
-      return { participants: { ...s.participants, [clientId]: { ...existing, cursor } } };
-    }),
+    set((s) => ({ cursors: { ...s.cursors, [clientId]: cursor } })),
 
-  clear: () => set({ participants: {} }),
+  clear: () => set({ participants: {}, cursors: {} }),
 }));

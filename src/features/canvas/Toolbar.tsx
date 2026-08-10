@@ -74,10 +74,10 @@ export function Toolbar({ onOpenShortcuts }: Props) {
     <div
       role="toolbar"
       aria-label="Drawing tools"
-      className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-3 py-2 shadow-sm"
+      className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-neutral-200/80 bg-white/95 px-2.5 py-2 shadow-lg shadow-neutral-900/5 backdrop-blur"
     >
       <div
-        className="flex items-center gap-1"
+        className="flex items-center gap-0.5"
         role="group"
         aria-label="Tools"
         onKeyDown={handleToolsKeyDown}
@@ -94,10 +94,10 @@ export function Toolbar({ onOpenShortcuts }: Props) {
             aria-pressed={tool === t}
             title={`${label} (${shortcut})`}
             tabIndex={tool === t ? 0 : -1}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base transition motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base transition motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 ${
               tool === t
-                ? 'bg-neutral-900 text-white'
-                : 'text-neutral-700 hover:bg-neutral-100'
+                ? 'bg-violet-600 text-white shadow-sm'
+                : 'text-neutral-600 hover:bg-neutral-100'
             }`}
           >
             <span aria-hidden="true">{icon}</span>
@@ -105,39 +105,46 @@ export function Toolbar({ onOpenShortcuts }: Props) {
         ))}
       </div>
 
-      <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Style">
-        <label className="flex items-center gap-1 text-xs text-neutral-600">
-          Stroke
+      <div className="flex flex-wrap items-center gap-2.5 rounded-xl bg-neutral-50 px-2.5 py-1.5" role="group" aria-label="Style">
+        <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <span className="sr-only">Stroke</span>
           <input
             type="color"
             value={style.stroke}
             onChange={(e) => handleStrokeChange(e.target.value)}
             aria-label="Stroke color"
-            className="h-7 w-7 cursor-pointer rounded border border-neutral-300"
+            title="Stroke color"
+            className="h-6 w-6 cursor-pointer rounded-md border border-neutral-300"
           />
         </label>
-        <label className="flex items-center gap-1 text-xs text-neutral-600">
-          Fill
+        <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <span className="sr-only">Fill</span>
           <input
             type="color"
             value={style.fill === 'transparent' ? '#ffffff' : style.fill}
             onChange={(e) => setStyle({ fill: e.target.value })}
             aria-label="Fill color"
-            className="h-7 w-7 cursor-pointer rounded border border-neutral-300"
+            title="Fill color"
+            className="h-6 w-6 cursor-pointer rounded-md border border-neutral-300"
           />
           <button
             type="button"
             onClick={() => setStyle({ fill: 'transparent' })}
             aria-pressed={style.fill === 'transparent'}
-            className="ml-1 rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] text-neutral-600 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900"
+            title="No fill"
+            className={`rounded-md border px-1.5 py-0.5 text-[10px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900 ${
+              style.fill === 'transparent'
+                ? 'border-violet-300 bg-violet-100 text-violet-700'
+                : 'border-neutral-300 text-neutral-500 hover:bg-white'
+            }`}
           >
             None
           </button>
         </label>
-        <label className="flex items-center gap-1 text-xs text-neutral-600">
-          Width
+        <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <span className="sr-only">Width</span>
           <input
             type="range"
             min={1}
@@ -145,7 +152,8 @@ export function Toolbar({ onOpenShortcuts }: Props) {
             value={style.strokeWidth}
             onChange={(e) => setStyle({ strokeWidth: Number(e.target.value) })}
             aria-label="Stroke width"
-            className="w-20 cursor-pointer"
+            title="Stroke width"
+            className="w-16 cursor-pointer accent-violet-600"
           />
         </label>
         <div className="flex items-center gap-1" role="group" aria-label="Recent colors">
@@ -156,22 +164,24 @@ export function Toolbar({ onOpenShortcuts }: Props) {
               onClick={() => handleStrokeChange(c)}
               aria-label={`Use color ${c}`}
               style={{ backgroundColor: c }}
-              className="h-5 w-5 shrink-0 rounded-full border border-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900"
+              className={`h-5 w-5 shrink-0 rounded-full ring-1 ring-inset ring-black/10 transition hover:scale-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900 ${
+                style.stroke === c ? 'ring-2 ring-violet-500' : ''
+              }`}
             />
           ))}
         </div>
       </div>
 
-      <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
 
-      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="History">
+      <div className="flex flex-wrap items-center gap-0.5" role="group" aria-label="History">
         <button
           type="button"
           onClick={undo}
           disabled={!canUndo}
           aria-label="Undo (Ctrl+Z)"
           title="Undo (Ctrl+Z)"
-          className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
         >
           ↶
         </button>
@@ -181,13 +191,15 @@ export function Toolbar({ onOpenShortcuts }: Props) {
           disabled={!canRedo}
           aria-label="Redo (Ctrl+Shift+Z)"
           title="Redo (Ctrl+Shift+Z)"
-          className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-600 transition hover:bg-neutral-100 disabled:opacity-30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
         >
           ↷
         </button>
       </div>
 
-      <div className="ml-auto flex flex-wrap items-center gap-3">
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
+
+      <div className="flex flex-wrap items-center gap-2">
         <AvatarStack />
         <ShareButton />
         <button
@@ -195,16 +207,18 @@ export function Toolbar({ onOpenShortcuts }: Props) {
           onClick={onOpenShortcuts}
           aria-label="Keyboard shortcuts (?)"
           title="Keyboard shortcuts (?)"
-          className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-600 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
         >
           ?
         </button>
         <button
           type="button"
           onClick={handleClear}
-          className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+          aria-label="Clear board"
+          title="Clear board"
+          className="rounded-xl border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
         >
-          Clear board
+          Clear
         </button>
       </div>
     </div>

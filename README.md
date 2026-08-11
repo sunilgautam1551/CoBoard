@@ -3,7 +3,7 @@
 A real-time, multiplayer infinite-canvas whiteboard. Create a board, share the
 link, and draw together instantly — no signup required. Built to run entirely
 on free tiers: **Next.js on Vercel Hobby**, **real-time + persistence on
-Supabase's free tier**. Zero paid services, no license keys, no watermarks.
+Supabase's free tier**.
 
 Two browser tabs on a deployed board draw together with live cursors, and the
 board reloads exactly as it was left after a refresh.
@@ -129,13 +129,6 @@ selection live and broadcasts the change immediately — it isn't just a
 | Deploy | Vercel Hobby | Free, one-push deploy |
 | Keep-alive | Vercel Cron → `/api/keepalive` | Prevents the Supabase free-tier 7-day pause |
 
-**Explicitly not used:** tldraw (requires a production license key and
-watermark — fails the zero-cost constraint). Liveblocks, PartyKit, Ably, and
-Pusher are all reasonable alternatives with their own free tiers, but this
-project deliberately stays on a single vendor (Supabase) for both real-time
-and persistence, to keep the whole app inside one free-tier budget instead of
-juggling two. If you outgrow Supabase Realtime's limits, any of those are a
-drop-in swap for the `src/features/sync` layer.
 
 ## Architecture
 
@@ -227,8 +220,7 @@ supabase/
 
 ### 1. Create a Supabase project
 
-Create a free project at [supabase.com](https://supabase.com). No credit card
-required.
+Create a free project at [supabase.com](https://supabase.com).
 
 ### 2. Run the schema
 
@@ -308,10 +300,12 @@ These are deliberate v1 decisions, not oversights:
    boards, but very large boards (thousands of elements) will eventually run
    into it.
 
-## What's not built (see PRD for the full v1 scope)
+## What's not built yet
 
-No accounts, no comments/chat, no image uploads, no permissions/roles, no
-native app, no AI features — all deliberately out of scope for v1. Curved and
-elbow-routed arrows (only straight/multi-point-straight are implemented),
-PNG/SVG export, sticky notes, a "follow participant" viewport, and an
-optional Yjs-CRDT sync layer are noted as Phase 6 stretch goals.
+1. No accounts
+2. No comments/chat
+3. No image uploads
+4. No permissions/roles
+5. No native app
+6. No AI features.
+7. No Curved and elbow-routed arrows (only straight/multi-point-straight are implemented)
